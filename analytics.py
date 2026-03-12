@@ -14,8 +14,6 @@ import google.generativeai as genai
 
 from data_engine import ChessComAPIError, fetch_player_games
 
-GEMINI_API_KEY = "AIzaSyBOvWd2FTJeN2xxIVEYUqHPhZtlhcqZaaw"
-
 
 def _filter_player_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
     """
@@ -375,7 +373,7 @@ def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str) -> 
     )
 
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         # Prefer response.text when available
