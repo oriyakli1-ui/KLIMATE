@@ -3,3 +3,5 @@ pandas
 requests
 streamlit-option-menu
 google-generativeai
+statsmodels
+plotly
