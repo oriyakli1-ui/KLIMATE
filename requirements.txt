@@ -1,7 +1,8 @@
 streamlit
 pandas
-requests
-streamlit-option-menu
-google-generativeai
-statsmodels
+numpy
 plotly
+streamlit-option-menu
+chess
+google-generativeai
+requests
