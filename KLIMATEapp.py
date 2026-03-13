@@ -610,6 +610,120 @@ def _render_overview_page(games_df, username: str) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
+    """Analyze openings where the user statistically struggles the most."""
+    username_lc = username.strip().lower()
+    df = games_df.copy()
+    if df.empty:
+        st.info("No games loaded yet.")
+        return
+
+    is_white = df["white_player"].astype(str).str.lower() == username_lc
+    df["user_result_raw"] = np.where(is_white, df["white_result"], df["black_result"])
+
+    loss_results = {"checkmated", "timeout", "resigned", "abandoned", "lose", "loss"}
+
+    def _outcome(res: object) -> str:
+        r = str(res or "").strip().lower()
+        if r == "win":
+            return "Win"
+        if r in loss_results:
+            return "Loss"
+        return "Draw"
+
+    df["user_outcome"] = df["user_result_raw"].map(_outcome)
+
+    # Opening key similar to analyze_openings: prefer 'opening', fallback 'eco'
+    opening_series = df.get("opening", pd.Series(index=df.index, dtype="object")).fillna("")
+    eco_series = df.get("eco", pd.Series(index=df.index, dtype="object")).fillna("")
+    opening_key = opening_series.where(opening_series.str.len() > 0, eco_series)
+    opening_key = opening_key.replace("", "Unknown")
+    df["opening_key"] = opening_key
+
+    # Aggregate results per opening
+    agg = (
+        df.groupby(["opening_key", "user_outcome"])
+        .size()
+        .unstack(fill_value=0)
+    )
+    agg["Total"] = agg.sum(axis=1)
+    # Filter to openings seen at least 3 times
+    agg = agg[agg["Total"] >= 3]
+    if agg.empty:
+        st.info("Not enough opening data yet to identify strategic blindspots.")
+        return
+
+    # Ensure all columns exist
+    for col in ["Win", "Loss", "Draw"]:
+        if col not in agg.columns:
+            agg[col] = 0
+
+    agg["WinRate"] = agg["Win"] / agg["Total"]
+    agg["LossRate"] = agg["Loss"] / agg["Total"]
+    agg["DrawRate"] = agg["Draw"] / agg["Total"]
+
+    # Blindspots: openings with the highest loss rate
+    blindspots = agg.sort_values(["LossRate", "WinRate"], ascending=[False, True]).head(5)
+
+    # Prepare display labels using existing formatter
+    blindspots = blindspots.reset_index().rename(columns={"opening_key": "opening_raw"})
+    blindspots["Opening"] = blindspots["opening_raw"].apply(_format_opening_label)
+
+    st.header("Strategic Blindspots")
+    st.info(
+        "These are the openings where you lose the most rating points. "
+        "This is your strategic blindspot."
+    )
+
+    # Horizontal stacked bar chart of Win/Loss/Draw rates
+    openings = blindspots["Opening"]
+    win_pct = blindspots["WinRate"]
+    loss_pct = blindspots["LossRate"]
+    draw_pct = blindspots["DrawRate"]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            y=openings,
+            x=win_pct,
+            name="Win",
+            orientation="h",
+            marker_color="#22C55E",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            y=openings,
+            x=draw_pct,
+            name="Draw",
+            orientation="h",
+            marker_color="#64748B",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            y=openings,
+            x=loss_pct,
+            name="Loss",
+            orientation="h",
+            marker_color="#EF4444",
+        )
+    )
+
+    fig.update_layout(
+        barmode="stack",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#E5E7EB"),
+        margin=dict(l=40, r=40, t=40, b=40),
+        xaxis=dict(title="Result share", tickformat=".0%"),
+        yaxis=dict(title="Opening"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+
+    st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 def main() -> None:
     """Main entry point for the Klimate Streamlit app."""
     st.set_page_config(
@@ -672,8 +786,14 @@ def main() -> None:
         st.markdown("<br>", unsafe_allow_html=True)
         selection = option_menu(
             menu_title="KLIMATE",
-            options=["Overview", "Cognitive Clock", "Spatial Analysis", "Engine Deep Dive"],
-            icons=["house", "clock-history", "bullseye", "cpu"],
+            options=[
+                "Overview",
+                "Cognitive Clock",
+                "Spatial Analysis",
+                "Strategic Blindspots",
+                "Engine Deep Dive",
+            ],
+            icons=["house", "clock-history", "bullseye", "bullseye", "cpu"],
             menu_icon="cast",
             default_index=0,
             styles={
@@ -815,6 +935,9 @@ def main() -> None:
             st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
             st.plotly_chart(fig_vuln, use_container_width=False)
             st.markdown("</div>", unsafe_allow_html=True)
+
+    elif selection == "Strategic Blindspots":
+        _render_strategic_blindspots(games_df, username)
 
     elif selection == "Engine Deep Dive":
         _render_engine_deep_dive(games_df, username)
