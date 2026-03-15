@@ -418,8 +418,8 @@ def get_gemini_opening_deep_dive(opening_name: str) -> str:
 
 def get_gemini_opening_masterclass(opening_name: str) -> str:
     """
-    Use Gemini to generate a punchy, actionable masterclass for an opening:
-    core idea, how to defend against it, how to exploit it.
+    Use Gemini to generate a punchy, actionable masterclass for an opening,
+    returning the FEN string on the first line.
     """
     name = str(opening_name or "").strip()
     if not name or name.lower().startswith("choose"):
@@ -434,6 +434,8 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
     )
 
     try:
+        import google.generativeai as genai
+        import streamlit as st
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)

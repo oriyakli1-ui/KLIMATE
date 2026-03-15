@@ -58,7 +58,7 @@ def _render_engine_deep_dive(games_df, username: str) -> None:
         st.warning("Selected game has no PGN to analyze.")
         return
 
-    if st.button("Analyze Game", use_container_width=True):
+    if st.button("Analyze Game", width="stretch"):
         st.session_state["analyzed_pgn"] = selected_pgn
 
     # Persist UI across reruns (e.g., selectbox changes)
@@ -119,7 +119,7 @@ def _render_engine_deep_dive(games_df, username: str) -> None:
     )
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Blunder Explorer
@@ -495,7 +495,7 @@ def _render_cognitive_clock_chart(time_of_day_df):
     )
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -606,7 +606,7 @@ def _render_overview_page(games_df, username: str) -> None:
     )
     fig.update_yaxes(gridcolor="rgba(148, 163, 184, 0.25)")
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -772,7 +772,7 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     )
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("### 🎓 Deep Dive into your Blindspots")
@@ -781,7 +781,7 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     cols = st.columns(max(1, num_openings))
     for i, opening_name in enumerate(opening_names):
         with cols[i]:
-            if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", use_container_width=True):
+            if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
                 show_opening_masterclass(opening_name)
 
 def main() -> None:
@@ -800,7 +800,7 @@ def main() -> None:
     if not data_loaded:
         _, logo_col, _ = st.columns([1, 2, 1])
         with logo_col:
-            st.image("logo.png", use_container_width=True)
+            st.image("logo.png", width="stretch")
         st.markdown(
             "<p style='text-align: center; color: #9CA3AF; font-size: 1.2rem; "
             "font-weight: 300; margin-top: -15px; margin-bottom: 40px; letter-spacing: 1px;'>"
@@ -814,7 +814,7 @@ def main() -> None:
             username_input = st.text_input(
                 "Chess.com Username", placeholder="e.g. oriyakli1"
             )
-            analyze_clicked = st.button("Analyze DNA", use_container_width=True)
+            analyze_clicked = st.button("Analyze DNA", width="stretch")
 
         if analyze_clicked and username_input.strip():
             username = username_input.strip()
@@ -842,7 +842,7 @@ def main() -> None:
     username = st.session_state["username"]
 
     with st.sidebar:
-        st.image("logo.png", use_container_width=True)
+        st.image("logo.png", width="stretch")
         st.markdown("<br>", unsafe_allow_html=True)
         selection = option_menu(
             menu_title="KLIMATE",
@@ -962,7 +962,7 @@ def main() -> None:
                 showgrid=False, showticklabels=True, scaleanchor="x", scaleratio=1
             )
             st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-            st.plotly_chart(fig_act, use_container_width=False, config={"displayModeBar": False})
+            st.plotly_chart(fig_act, width="content", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
         with tab2:
@@ -993,7 +993,7 @@ def main() -> None:
                 showgrid=False, showticklabels=True, scaleanchor="x", scaleratio=1
             )
             st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-            st.plotly_chart(fig_vuln, use_container_width=False, config={"displayModeBar": False})
+            st.plotly_chart(fig_vuln, width="content", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
     elif selection == "Strategic Blindspots":
