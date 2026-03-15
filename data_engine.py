@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import requests
+import streamlit as st
 
 
 USER_AGENT_HEADER: Dict[str, str] = {
@@ -104,6 +105,7 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+@st.cache_data(show_spinner=False, ttl=300)
 def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
     """
     Fetch a player's most recent games from the Chess.com public API.
@@ -124,7 +126,7 @@ def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
     pd.DataFrame
         DataFrame containing one row per game with the following columns:
 
-        - ``date_utc`` (datetime64[ns, UTC] converted to UTC-naive)
+        - ``date_utc`` (datetime64[ns, UTC], timezone-aware)
         - ``white_player``
         - ``black_player``
         - ``white_rating``
@@ -212,8 +214,8 @@ def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
 
     df = pd.DataFrame(collected_games)
 
-    # Normalize date column to pandas datetime; keep as UTC-naive for simplicity.
-    df["date_utc"] = pd.to_datetime(df["date_utc"], utc=True).dt.tz_convert(None)
+    # Normalize date column to pandas datetime; keep timezone-aware (UTC).
+    df["date_utc"] = pd.to_datetime(df["date_utc"], utc=True)
 
     # Sort by date descending (most recent first).
     df = df.sort_values("date_utc", ascending=False).reset_index(drop=True)

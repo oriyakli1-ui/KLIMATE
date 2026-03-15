@@ -385,6 +385,66 @@ def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str) -> 
         return "AI Coach is currently resting. Error: " + str(e)
 
 
+def get_gemini_opening_deep_dive(opening_name: str) -> str:
+    """
+    Use Gemini to generate a structured grandmaster-level deep dive for an opening.
+    """
+    name = str(opening_name or "").strip()
+    if not name or name.lower().startswith("choose"):
+        return ""
+
+    prompt = (
+        'You are an elite Chess Grandmaster and coach. The user wants to study the opening: '
+        f'"{name}". '
+        "Provide a comprehensive but beautifully structured analysis. Include: "
+        "1. Core Ideas & Philosophy of the opening. "
+        "2. Main Variations. "
+        "3. How to play WITH it (Attacking plans). "
+        "4. How to play AGAINST it (Defensive plans). "
+        "Format beautifully with markdown and emojis."
+    )
+
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(prompt)
+        text = getattr(response, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+        return "AI Coach is currently resting. The response did not contain usable text."
+    except Exception as e:
+        return "AI Coach is currently resting. Error: " + str(e)
+
+
+def get_gemini_opening_masterclass(opening_name: str) -> str:
+    """
+    Use Gemini to generate a punchy, actionable masterclass for an opening:
+    core idea, how to defend against it, how to exploit it.
+    """
+    name = str(opening_name or "").strip()
+    if not name or name.lower().startswith("choose"):
+        return ""
+
+    prompt = (
+        f'Analyze the chess opening "{name}". '
+        "CRITICAL: The very first line of your response MUST be ONLY the standard FEN string of the position after the defining moves of this opening. "
+        "Starting from the second line, provide a beautifully formatted, highly educational masterclass. "
+        "Include: 1. The Core Idea. 2. How to defend against it (if the opponent plays it) with specific plans. 3. How to exploit it/gain an advantage. "
+        "Use markdown, headers, and bullet points to make it visually accessible and easy to learn from."
+    )
+
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(prompt)
+        text = getattr(response, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+        return "AI Coach is currently resting. The response did not contain usable text."
+    except Exception as e:
+        return "AI Coach is currently resting. Error: " + str(e)
+
+
 def get_current_profile_stats(df: pd.DataFrame) -> Tuple[Dict[str, object], str]:
     """
     Compute current ratings per time control and the user's current streak.
@@ -439,6 +499,7 @@ def get_current_profile_stats(df: pd.DataFrame) -> Tuple[Dict[str, object], str]
     return ratings, streak_str
 
 
+@st.cache_data(show_spinner=False)
 def analyze_time_of_day(
     df: pd.DataFrame, username: str, timezone: str = "Asia/Jerusalem"
 ) -> pd.DataFrame:
@@ -470,6 +531,8 @@ def analyze_time_of_day(
 
     df_work = player_games.copy()
     df_work["date_utc"] = pd.to_datetime(df_work["date_utc"], utc=True)
+    if df_work["date_utc"].dt.tz is None:
+        df_work["date_utc"] = df_work["date_utc"].dt.tz_localize("UTC", ambiguous="infer")
     df_work["local_time"] = df_work["date_utc"].dt.tz_convert(timezone)
     df_work["hour"] = df_work["local_time"].dt.hour
 

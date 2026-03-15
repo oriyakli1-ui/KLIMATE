@@ -119,7 +119,7 @@ def _render_engine_deep_dive(games_df, username: str) -> None:
     )
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Blunder Explorer
@@ -495,7 +495,7 @@ def _render_cognitive_clock_chart(time_of_day_df):
     )
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -606,8 +606,58 @@ def _render_overview_page(games_df, username: str) -> None:
     )
     fig.update_yaxes(gridcolor="rgba(148, 163, 184, 0.25)")
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+@st.dialog("🎓 Opening Masterclass", width="large")
+def show_opening_masterclass(opening_name: str) -> None:
+    """Modal dialog: AI analysis with dynamic FEN board and YouTube link."""
+    st.header(opening_name)
+    with st.spinner("Consulting Grandmaster AI..."):
+        analysis_text = analytics.get_gemini_opening_masterclass(opening_name)
+
+    if not analysis_text:
+        st.warning("Could not generate analysis. Please try again.")
+        return
+
+    lines = analysis_text.strip().split("\n")
+    fen_line = lines[0].strip()
+    explanation = "\n".join(lines[1:]).strip()
+    board = chess.Board()
+    try:
+        if len(fen_line.split(" ")) >= 4:
+            board.set_fen(fen_line)
+        else:
+            explanation = analysis_text
+    except ValueError:
+        explanation = analysis_text
+
+    col1, col2 = st.columns([1, 1.5])
+    with col1:
+        try:
+            svg_data = chess.svg.board(board=board, size=320)
+            st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
+            st.write(svg_data, unsafe_allow_html=True)
+            st.caption("Standard position for this opening.")
+            st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
+        except Exception:
+            st.info("Board visualization unavailable.")
+
+        formatted = opening_name.replace(" ", "+").strip()
+        yt_url = f"https://www.youtube.com/results?search_query=chess+opening+{formatted}"
+        st.markdown(
+            f'<br><a href="{yt_url}" target="_blank" rel="noopener noreferrer" '
+            'style="display: block; text-align: center; padding: 0.6rem 1rem; background: #06B6D4; '
+            'color: #0F172A; border-radius: 8px; text-decoration: none; font-weight: 600;">'
+            "🎥 Watch Video Masterclass</a>",
+            unsafe_allow_html=True,
+        )
+    with col2:
+        st.markdown(
+            f"<div style='font-size: 1.05rem; line-height: 1.6;'>\n\n{explanation}\n</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
@@ -722,8 +772,18 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     )
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("### 🎓 Deep Dive into your Blindspots")
+    opening_names = blindspots["Opening"].astype(str).tolist()
+    num_openings = len(opening_names)
+    cols = st.columns(max(1, num_openings))
+    for i, opening_name in enumerate(opening_names):
+        with cols[i]:
+            if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", use_container_width=True):
+                show_opening_masterclass(opening_name)
+
 def main() -> None:
     """Main entry point for the Klimate Streamlit app."""
     st.set_page_config(
@@ -902,7 +962,7 @@ def main() -> None:
                 showgrid=False, showticklabels=True, scaleanchor="x", scaleratio=1
             )
             st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-            st.plotly_chart(fig_act, use_container_width=False)
+            st.plotly_chart(fig_act, use_container_width=False, config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
         with tab2:
@@ -933,7 +993,7 @@ def main() -> None:
                 showgrid=False, showticklabels=True, scaleanchor="x", scaleratio=1
             )
             st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-            st.plotly_chart(fig_vuln, use_container_width=False)
+            st.plotly_chart(fig_vuln, use_container_width=False, config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
     elif selection == "Strategic Blindspots":
