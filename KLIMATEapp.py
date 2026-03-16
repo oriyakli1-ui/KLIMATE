@@ -951,8 +951,8 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
 
     st.header("Strategic Blindspots")
     st.info(
-        "These are the openings where you lose the most rating points. "
-        "This is your strategic blindspot."
+        "These are the openings where you drop the most rating points—your strategic blindspots. 👇 "
+        "**Scroll to the bottom of this page to unlock a personalized AI Masterclass and turn these weaknesses into weapons!**"
     )
 
     # Horizontal stacked bar chart of Win/Loss/Draw rates
@@ -1181,9 +1181,12 @@ def main() -> None:
                 aspect="equal",
                 origin="lower",
                 color_continuous_scale=["#0F172A", "#06B6D4", "#22D3EE"],
-                title="Where do you move your pieces?",
             )
             fig_act.update_layout(
+                title=dict(
+                    text="Where do you move your pieces?",
+                    font=dict(color="#F8FAFC", size=18),
+                ),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#E5E7EB"),
