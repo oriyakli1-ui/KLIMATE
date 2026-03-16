@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import re
 from typing import Optional
 
@@ -201,7 +202,6 @@ def _inject_global_styles() -> None:
             background-color: #0F172A;
             color: #E5E7EB;
         }
-
         .block-container {
             padding-top: 2rem;
             padding-bottom: 3rem;
@@ -217,7 +217,6 @@ def _inject_global_styles() -> None:
             text-align: center;
             margin-bottom: 0.5rem;
         }
-
         .klimate-hero-subtitle {
             font-size: 1rem;
             color: #9CA3AF;
@@ -233,7 +232,6 @@ def _inject_global_styles() -> None:
             border: 1px solid #334155;
             box-shadow: 0 18px 40px rgba(15, 23, 42, 0.8);
         }
-
         .klimate-metric-label {
             font-size: 0.9rem;
             text-transform: uppercase;
@@ -241,21 +239,17 @@ def _inject_global_styles() -> None:
             color: #9CA3AF;
             margin-bottom: 0.3rem;
         }
-
         .klimate-metric-value {
             font-size: 1.8rem;
             font-weight: 700;
             color: #E5E7EB;
         }
-
         .klimate-metric-value--success {
             color: #10B981;
         }
-
         .klimate-metric-value--danger {
             color: #EF4444;
         }
-
         .klimate-metric-badge {
             display: inline-block;
             padding: 4px 10px;
@@ -264,17 +258,14 @@ def _inject_global_styles() -> None:
             font-weight: 500;
             margin-top: 0.4rem;
         }
-
         .badge-neutral {
             background: rgba(148, 163, 184, 0.16);
             color: #E5E7EB;
         }
-
         .badge-success {
             background: rgba(16, 185, 129, 0.14);
             color: #6EE7B7;
         }
-
         .badge-danger {
             background: rgba(239, 68, 68, 0.14);
             color: #FCA5A5;
@@ -287,12 +278,10 @@ def _inject_global_styles() -> None:
             border-radius: 999px;
             border: 1px solid #1F2937;
         }
-
         .stTextInput > div > div > input:focus {
             border-color: #06B6D4;
             box-shadow: 0 0 0 1px #06B6D4;
         }
-
         .stButton > button {
             border-radius: 999px;
             background: linear-gradient(90deg, #06B6D4, #10B981);
@@ -301,7 +290,6 @@ def _inject_global_styles() -> None:
             border: none;
             padding: 0.55rem 1.8rem;
         }
-
         .stButton > button:hover {
             filter: brightness(1.05);
         }
@@ -350,6 +338,49 @@ def _inject_global_styles() -> None:
             visibility: visible;
             opacity: 1;
         }
+
+        /* Heatmaps: Label and Title Styling */
+        .plotly-graph-div .g-gtitle text,
+        .plotly-graph-div .g-axis text,
+        .plotly-graph-div .g-legend text {
+            fill: #F8FAFC !important; /* very light grey / off-white */
+        }
+
+        /* Custom Plotly Tooltip Styling for a modern look (e.g. Opening DNA) */
+        .plotly-graph-div .hoverlayer .hovertext rect {
+            fill: #1E293B !important;  /* dark Bento background */
+            stroke: none !important;   /* no outline */
+            rx: 8px !important;        /* rounded corners (x-radius) */
+            ry: 8px !important;        /* rounded corners (y-radius) */
+        }
+        .plotly-graph-div .hoverlayer .hovertext text {
+            fill: #F1F5F9 !important;  /* off-white text */
+        }
+
+        .masterpiece-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 24px;
+            padding: 2rem;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(6, 182, 212, 0.05);
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .mp-header { color: #9CA3AF; font-size: 0.9rem; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .mp-username { 
+            font-size: 2.8rem; font-weight: 800; margin: 0; 
+            background: linear-gradient(90deg, #06B6D4, #10B981);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+        }
+        .mp-date { color: #64748B; font-size: 0.85rem; margin-bottom: 2rem; }
+        .mp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; text-align: left; }
+        .mp-stat-box { background: rgba(2, 6, 23, 0.4); border-radius: 16px; padding: 1.2rem; border: 1px solid rgba(255, 255, 255, 0.05); }
+        .mp-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .mp-label { color: #9CA3AF; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
+        .mp-value { color: #F8FAFC; font-size: 1.4rem; font-weight: 700; line-height: 1.2; }
+        .mp-footer { margin-top: 2rem; font-size: 0.85rem; color: #475569; letter-spacing: 0.1em; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -373,6 +404,93 @@ def _format_opening_label(raw: str) -> str:
     if not segment:
         return "Unknown"
     return segment.title()
+
+
+def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
+    current_date = datetime.datetime.now().strftime("%B %d, %Y")
+    wrapped = analytics.get_wrapped_data(games_df, username, live_ratings)
+
+    top_rating = wrapped.get("top_rating", "Not enough data")
+    total_victories = wrapped.get("total_victories", "Not enough data")
+    deadliest = wrapped.get("deadliest_opening", "Not enough data")
+    golden_hour = wrapped.get("golden_hour", "Not enough data")
+
+    if isinstance(deadliest, dict):
+        opening_name = str(deadliest.get("opening", "Unknown"))
+        wr = float(deadliest.get("win_rate_pct", 0.0))
+        deadliest_value = f"{_format_opening_label(opening_name)} — {wr:.1f}%"
+    else:
+        deadliest_value = str(deadliest)
+
+    st.markdown(
+        f"""
+        <div class="masterpiece-card">
+            <div class="mp-header">KLIMATE MASTERPIECE</div>
+            <h1 class="mp-username">{username}</h1>
+            <div class="mp-date">{current_date}</div>
+            <div class="mp-grid">
+                <div class="mp-stat-box">
+                    <div class="mp-icon">👑</div>
+                    <div class="mp-label">Top Rating</div>
+                    <div class="mp-value">{top_rating}</div>
+                </div>
+                <div class="mp-stat-box">
+                    <div class="mp-icon">🏆</div>
+                    <div class="mp-label">Total Victories</div>
+                    <div class="mp-value">{total_victories}</div>
+                </div>
+                <div class="mp-stat-box">
+                    <div class="mp-icon">🗡️</div>
+                    <div class="mp-label">Deadliest Opening</div>
+                    <div class="mp-value">{deadliest_value}</div>
+                </div>
+                <div class="mp-stat-box">
+                    <div class="mp-icon">⚡</div>
+                    <div class="mp-label">Golden Hour</div>
+                    <div class="mp-value">{golden_hour} <span style="color:#64748B; font-size: 0.95rem; font-weight: 600;">Peak Performance</span></div>
+                </div>
+            </div>
+            <div class="mp-footer">SHARE YOUR CHESS DNA</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    share_url = "https://klimate.streamlit.app/"
+    linkedin_url = f"https://www.linkedin.com/sharing/share-offsite/?url={share_url}"
+    facebook_url = f"https://www.facebook.com/sharer/sharer.php?u={share_url}"
+
+    c1, c2, c3 = st.columns([1, 1, 1.4])
+    with c1:
+        st.markdown(
+            f'<a href="{linkedin_url}" target="_blank" rel="noopener noreferrer" '
+            'style="display: block; text-align: center; padding: 0.6rem 1rem; background: rgba(6, 182, 212, 0.18); '
+            'border: 1px solid rgba(6, 182, 212, 0.35); color: #E5E7EB; border-radius: 12px; text-decoration: none; font-weight: 700;">'
+            "Share on LinkedIn</a>",
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f'<a href="{facebook_url}" target="_blank" rel="noopener noreferrer" '
+            'style="display: block; text-align: center; padding: 0.6rem 1rem; background: rgba(16, 185, 129, 0.14); '
+            'border: 1px solid rgba(16, 185, 129, 0.28); color: #E5E7EB; border-radius: 12px; text-decoration: none; font-weight: 700;">'
+            "Share on Facebook</a>",
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            "<div style='padding: 0.6rem 0.9rem; border-radius: 12px; background: rgba(2, 6, 23, 0.35); "
+            "border: 1px solid rgba(255,255,255,0.06); color: #CBD5E1; font-weight: 600; text-align: center;'>"
+            "📸 Screenshot this card to share on Instagram or your resume!"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+
+@st.dialog("Your Chess DNA", width="large")
+def _show_klimate_masterpiece(username: str, games_df) -> None:
+    live_ratings = analytics.get_real_time_ratings(username)
+    _render_wrapped_card(username, live_ratings, games_df)
 
 
 def _render_metric_card(
@@ -884,6 +1002,8 @@ def main() -> None:
     with st.sidebar:
         st.image("logo.png", width="stretch")
         st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🎁 Generate My Klimate Masterpiece", type="primary"):
+            _show_klimate_masterpiece(username, games_df)
         selection = option_menu(
             menu_title="KLIMATE",
             options=[

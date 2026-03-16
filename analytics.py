@@ -577,6 +577,78 @@ def analyze_time_of_day(
     return grouped
 
 
+def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, object]) -> Dict[str, object]:
+    """
+    Build a Spotify-Wrapped style positive metrics summary for the given user.
+
+    Returns a dict with:
+    - top_rating
+    - total_victories
+    - deadliest_opening
+    - golden_hour
+    """
+    # Top rating
+    rating_values: List[int] = []
+    try:
+        for key in ["rapid", "blitz", "bullet"]:
+            val = (live_ratings or {}).get(key, "N/A")
+            if isinstance(val, (int, float)):
+                rating_values.append(int(val))
+    except Exception:
+        rating_values = []
+    top_rating: object = max(rating_values) if rating_values else "Not enough data"
+
+    # Victories
+    total_victories: object = "Not enough data"
+    try:
+        player_games = _filter_player_games(df, username)
+        if not player_games.empty:
+            username_lc = username.strip().lower()
+            is_white = player_games["white_player"].astype(str).str.lower() == username_lc
+            user_result = player_games["white_result"].where(is_white, player_games["black_result"])
+            total_victories = int((user_result.fillna("").astype(str).str.lower() == "win").sum())
+    except Exception:
+        total_victories = "Not enough data"
+
+    # Deadliest opening: highest true_win_rate where total_games >= 3
+    deadliest_opening: object = "Not enough data"
+    try:
+        openings_df = analyze_openings(df, username)
+        if not openings_df.empty:
+            eligible = openings_df[openings_df["total_games"] >= 3].copy()
+            if not eligible.empty:
+                best_row = eligible.sort_values(
+                    ["true_win_rate", "total_games"], ascending=[False, False]
+                ).iloc[0]
+                opening_name = str(best_row.get("opening", "Unknown"))
+                wr_pct = float(best_row.get("true_win_rate", 0.0)) * 100.0
+                deadliest_opening = {"opening": opening_name, "win_rate_pct": wr_pct}
+    except Exception:
+        deadliest_opening = "Not enough data"
+
+    # Golden hour: highest true_win_rate with minimum 3 games
+    golden_hour: object = "Not enough data"
+    try:
+        tod_df = analyze_time_of_day(df, username, timezone="Asia/Jerusalem")
+        if not tod_df.empty:
+            eligible = tod_df[tod_df["total_games"] >= 3].copy()
+            if not eligible.empty:
+                best_row = eligible.sort_values(
+                    ["true_win_rate", "total_games"], ascending=[False, False]
+                ).iloc[0]
+                hour = int(best_row.get("hour", 0))
+                golden_hour = f"{hour:02d}:00"
+    except Exception:
+        golden_hour = "Not enough data"
+
+    return {
+        "top_rating": top_rating,
+        "total_victories": total_victories,
+        "deadliest_opening": deadliest_opening,
+        "golden_hour": golden_hour,
+    }
+
+
 def _square_to_row_col(square: int) -> Tuple[int, int]:
     """Convert chess square index (0-63) to 2D (row, col). row 0 = rank 1, col 0 = file a."""
     rank = chess.square_rank(square)  # 0 = rank 1, 7 = rank 8
