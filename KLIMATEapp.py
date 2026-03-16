@@ -417,115 +417,97 @@ def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
     current_date = datetime.datetime.now().strftime("%B %d, %Y")
     wrapped = analytics.get_wrapped_data(games_df, username, live_ratings)
 
-    top_rating = wrapped.get("top_rating", "Not enough data")
-    total_victories = wrapped.get("total_victories", "Not enough data")
-    deadliest = wrapped.get("deadliest_opening", "Not enough data")
-    golden_hour = wrapped.get("golden_hour", "Not enough data")
-
-    if isinstance(deadliest, dict):
-        opening_name = str(deadliest.get("opening", "Unknown"))
-        wr = float(deadliest.get("win_rate_pct", 0.0))
-        deadliest_value = f"{_format_opening_label(opening_name)} — {wr:.1f}%"
-    else:
-        deadliest_value = str(deadliest)
-
-    st.markdown(
-        f"""
-        <div class="masterpiece-card">
-            <div class="mp-header">KLIMATE MASTERPIECE</div>
-            <h1 class="mp-username">{username}</h1>
-            <div class="mp-date">{current_date}</div>
-            <div class="mp-grid">
-                <div class="mp-stat-box">
-                    <div class="mp-icon">👑</div>
-                    <div class="mp-label">Top Rating</div>
-                    <div class="mp-value">{top_rating}</div>
-                </div>
-                <div class="mp-stat-box">
-                    <div class="mp-icon">🏆</div>
-                    <div class="mp-label">Total Victories</div>
-                    <div class="mp-value">{total_victories}</div>
-                </div>
-                <div class="mp-stat-box">
-                    <div class="mp-icon">🗡️</div>
-                    <div class="mp-label">Deadliest Opening</div>
-                    <div class="mp-value">{deadliest_value}</div>
-                </div>
-                <div class="mp-stat-box">
-                    <div class="mp-icon">⚡</div>
-                    <div class="mp-label">Golden Hour</div>
-                    <div class="mp-value">{golden_hour} <span style="color:#64748B; font-size: 0.95rem; font-weight: 600;">Peak Performance</span></div>
-                </div>
-            </div>
-            <div class="mp-footer">SHARE YOUR CHESS DNA</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Define the dynamic text to be shared
-    app_url = "https://klimate.streamlit.app/"  # Ensure this is the correct public URL
-    share_text = f"""🚀 I just analyzed my Chess DNA with Klimate.AI! 
-
-Here are my stats as an official {wrapped.get('player_persona', 'Tactician')}:
-👑 Peak Rating: {wrapped['top_rating']}
-🏆 Total Victories: {wrapped['total_victories']}
-🗡️ Deadliest Weapon: {wrapped['deadliest_opening']}
-⚡ Prime Time: {wrapped['golden_hour']}
-
-Discover your own hidden chess psychology and strategic blindspots here: {app_url}
-
-#Klimate #Chess #DataScience #AI #ProductAnalytics
-"""
-
-    # Escape the string for JavaScript
     import json
-    js_share_text = json.dumps(share_text)
 
-    # Create the custom HTML/JS button
-    custom_share_html = f"""
-    <div style="display: flex; justify-content: center; margin-top: 30px;">
-        <button onclick='shareToLinkedIn()' style="background: linear-gradient(90deg, #0A66C2, #004182); color: white; padding: 14px 28px; border: none; border-radius: 12px; font-weight: 700; font-size: 1.1rem; cursor: pointer; box-shadow: 0 8px 15px rgba(10, 102, 194, 0.4); transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; gap: 10px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
-            Share to LinkedIn
+    # The HTML for the card itself (must have id='klimate-masterpiece-card')
+    card_html = f"""
+    <div id="klimate-masterpiece-card" class="masterpiece-card" style="position: relative; background: radial-gradient(circle at 50% 0%, #1E293B, #020617 80%); padding: 3rem 2rem; border-radius: 24px; color: white; text-align: center; font-family: sans-serif;">
+        <div style="color: #9CA3AF; letter-spacing: 0.2em; font-size: 0.9rem; margin-bottom: 0.5rem;">KLIMATE CHESS DNA</div>
+        <h1 style="font-size: 3.2rem; margin: 0; background: linear-gradient(90deg, #06B6D4, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{username.upper()}</h1>
+        <div style="color: #E2E8F0; font-weight: 600; margin-top: 0.5rem; text-transform: uppercase;">{wrapped.get('player_persona', 'Tactician')}</div>
+        <div style="color: #475569; font-size: 0.8rem; margin-bottom: 2rem;">{current_date}</div>
+        
+        <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(16,185,129,0.4); border-radius: 20px; padding: 2rem; margin-bottom: 1.5rem;">
+            <div style="font-size: 4rem; font-weight: 900; color: #10B981;">{wrapped['top_rating']}</div>
+            <div style="color: #9CA3AF; font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase;">👑 Peak Rating</div>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between; gap: 10px;">
+            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
+                <div style="font-size: 0.7rem; color: #9CA3AF; text-transform: uppercase;">🏆 Victories</div>
+                <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['total_victories']}</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
+                <div style="font-size: 0.7rem; color: #9CA3AF; text-transform: uppercase;">🗡️ Best Opening</div>
+                <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['deadliest_opening']}</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
+                <div style="font-size: 0.7rem; color: #9CA3AF; text-transform: uppercase;">⚡ Prime Time</div>
+                <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['golden_hour']}</div>
+            </div>
+        </div>
+    </div>
+    """
+
+    # The JS logic using html2canvas and Web Share API
+    share_script = f"""
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <div style="text-align: center; margin-top: 25px;">
+        <button onclick="shareMasterpiece()" id="shareBtn" style="background: linear-gradient(90deg, #10B981, #06B6D4); color: white; padding: 15px 30px; border: none; border-radius: 99px; font-weight: 700; font-size: 1.1rem; cursor: pointer; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);">
+            ✨ Share My DNA (LinkedIn, Insta, FB)
         </button>
     </div>
 
     <script>
-    function shareToLinkedIn() {{
-        // Create a temporary textarea element to copy the text
-        const tempTextArea = document.createElement("textarea");
-        tempTextArea.value = {js_share_text};
-        document.body.appendChild(tempTextArea);
-        tempTextArea.select();
-        tempTextArea.setSelectionRange(0, 99999); // For mobile devices
+    async function shareMasterpiece() {{
+        const btn = document.getElementById('shareBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '⏳ Generating Image...';
+        
+        const element = document.getElementById('klimate-masterpiece-card');
         
         try {{
-            document.execCommand("copy");
-            // Change button text temporarily to show success
-            const btn = document.querySelector('button');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '✅ Copied! Opening LinkedIn...';
-            
-            // Open LinkedIn post creation window after a short delay
-            setTimeout(() => {{
-                window.open('https://www.linkedin.com/feed/', '_blank');
-                btn.innerHTML = originalText;
-            }}, 1500);
-            
-        }} catch (err) {{
-            console.error('Oops, unable to copy', err);
-            alert('Unable to copy automatically. Please copy the text manually.');
+            const canvas = await html2canvas(element, {{ scale: 2, backgroundColor: '#020617', useCORS: true }});
+            canvas.toBlob(async (blob) => {{
+                const file = new File([blob], "klimate_dna.png", {{ type: "image/png" }});
+                
+                if (navigator.canShare && navigator.canShare({{ files: [file] }})) {{
+                    // Mobile / Supported browsers: Opens native sharing menu!
+                    btn.innerHTML = '🚀 Opening Share Menu...';
+                    await navigator.share({{
+                        title: 'My Klimate Chess DNA',
+                        text: 'Check out my chess psychology stats on Klimate.AI! ♟️🧠',
+                        files: [file]
+                    }});
+                    btn.innerHTML = originalText;
+                }} else {{
+                    // Desktop fallback: Download image and prompt to open LinkedIn
+                    btn.innerHTML = '💾 Downloading Image...';
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = "{username}_Klimate_DNA.png";
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    btn.innerHTML = '✅ Image Saved! Open LinkedIn';
+                    setTimeout(() => {{ window.open('https://www.linkedin.com/feed/', '_blank'); btn.innerHTML = originalText; }}, 2000);
+                }}
+            }}, 'image/png');
+        }} catch (error) {{
+            console.error('Error generating image:', error);
+            btn.innerHTML = '❌ Error generating image';
+            setTimeout(() => btn.innerHTML = originalText, 3000);
         }}
-        
-        document.body.removeChild(tempTextArea);
     }}
     </script>
     """
 
-    # Embed the HTML with components.html to ensure JS execution
+    # Render everything using components.html to ensure JS context is whole
     import streamlit.components.v1 as components
-    components.html(custom_share_html, height=100)
+    components.html(card_html + share_script, height=750, scrolling=True)
 
 
 @st.dialog("Your Chess DNA", width="large")
