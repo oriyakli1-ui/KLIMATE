@@ -963,6 +963,23 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     blindspots = blindspots.reset_index().rename(columns={"opening_key": "opening_raw"})
     blindspots["Opening"] = blindspots["opening_raw"].apply(_format_opening_label)
 
+    # Filter blindspots to only those we have precomputed masterclasses for
+    masterclass_pool = _load_masterclass_pool()
+    pool_names = [str(item.get("name", "")).lower() for item in masterclass_pool]
+
+    def _is_in_pool(opening_name: object) -> bool:
+        op_lower = str(opening_name or "").lower()
+        return any(pool_name and pool_name in op_lower for pool_name in pool_names)
+
+    blindspots = blindspots[blindspots["Opening"].apply(_is_in_pool)]
+
+    if blindspots.empty:
+        st.info(
+            "You play very unique openings! Play more standard openings like the Sicilian or Ruy Lopez "
+            "to unlock deep-dive Masterclasses."
+        )
+        return
+
     st.header("Strategic Blindspots")
     st.info(
         "These are the openings where you drop the most rating points—your strategic blindspots. 👇 "
@@ -1024,10 +1041,30 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     opening_names = blindspots["Opening"].astype(str).tolist()
     num_openings = len(opening_names)
     cols = st.columns(max(1, num_openings))
+
+    # Map each displayed opening to the best-matching pool entry name,
+    # so the dialog always finds a precomputed masterclass.
+    def _match_pool_name(display_name: str) -> str:
+        dn = display_name.lower()
+        # Exact match first
+        for item in masterclass_pool:
+            name = str(item.get("name", ""))
+            if name.lower() == dn:
+                return name
+        # Substring / fuzzy match
+        for item in masterclass_pool:
+            name = str(item.get("name", ""))
+            nl = name.lower()
+            if nl and (nl in dn or dn in nl):
+                return name
+        # Fallback to the original display name (should rarely happen due to prior filtering)
+        return display_name
+
     for i, opening_name in enumerate(opening_names):
+        pool_name = _match_pool_name(opening_name)
         with cols[i]:
             if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
-                show_opening_masterclass(opening_name)
+                show_opening_masterclass(pool_name)
 
 def main() -> None:
     """Main entry point for the Klimate Streamlit app."""
