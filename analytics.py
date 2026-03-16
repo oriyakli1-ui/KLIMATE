@@ -421,42 +421,55 @@ def get_gemini_opening_deep_dive(opening_name: str) -> str:
 
 
 @st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_gemini_opening_masterclass(opening_name: str) -> str:
     """
-    Use Gemini to generate a punchy, actionable masterclass for an opening,
-    returning the FEN string on the first line.
+    Use Gemini to generate a concise 3-bullet-point masterclass for an opening.
+
+    Cached for 1 hour per opening name to avoid repeated API calls.
     """
     name = str(opening_name or "").strip()
     if not name or name.lower().startswith("choose"):
         return ""
 
     prompt = (
-        f"Provide a detailed 3-bullet-point masterclass on the {name} opening. "
-        "Write at least 100 words. Explain key tactical and positional goals. "
-        "Finish every sentence. No intro or outro."
+        f"Explain the chess opening {name} in 3 short, bolded bullet points. "
+        "Be extremely concise. Max 80 words. Finish all sentences."
     )
 
     try:
         import google.generativeai as genai
-        import streamlit as st
+
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         model = genai.GenerativeModel("gemini-1.5-flash")
-        try:
-            response = model.generate_content(
-                prompt,
-                generation_config={"max_output_tokens": 1024},
-                request_options={"timeout": 45},
-            )
-        except Exception:
-            return "Analysis timed out. Please try again."
 
-        text = getattr(response, "text", None)
-        if isinstance(text, str) and text.strip():
-            print(f"DEBUG: Gemini Output Length: {len(text)}")
-            return text  # return full string, no slicing
-        return "AI Coach is currently resting. The response did not contain usable text."
-    except Exception as e:
-        return "AI Coach is currently resting. Error: " + str(e)
+        last_error: str | None = None
+        for _ in range(2):  # retry up to 2 times
+            try:
+                response = model.generate_content(
+                    prompt,
+                    generation_config={"max_output_tokens": 1024},
+                    request_options={"timeout": 60},
+                )
+                text = getattr(response, "text", None)
+                if isinstance(text, str) and text.strip():
+                    print(f"DEBUG: Gemini Output Length: {len(text)}")
+                    return text  # full string, no slicing
+                last_error = "Empty response from model."
+            except Exception as e:  # capture timeout or other errors
+                last_error = str(e)
+                continue
+
+        # If we reach here, both attempts failed
+        return (
+            "The AI Coach is taking a long time to think. "
+            "Please click the button again or try a different opening."
+        )
+    except Exception:
+        return (
+            "The AI Coach is taking a long time to think. "
+            "Please click the button again or try a different opening."
+        )
 
 
 def get_current_profile_stats(df: pd.DataFrame) -> Tuple[Dict[str, object], str]:
