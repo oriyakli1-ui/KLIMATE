@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import io
 import re
+import pickle
 from typing import Optional
 
 import numpy as np
@@ -32,6 +33,19 @@ def _format_game_label(row) -> str:
     if result:
         parts.append(result)
     return " | ".join(parts)
+
+
+@st.cache_resource(show_spinner=False)
+def _load_masterclass_pool() -> list[dict]:
+    """Load the precomputed opening masterclass pool from disk."""
+    try:
+        with open("masterclass_pool.pkl", "rb") as f:
+            data = pickle.load(f)
+        if isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return []
 
 
 def _render_engine_deep_dive(games_df, username: str) -> None:
@@ -826,41 +840,40 @@ def _render_overview_page(games_df, username: str) -> None:
 
 @st.dialog("🎓 Opening Masterclass", width="large")
 def show_opening_masterclass(opening_name: str) -> None:
-    """Modal dialog: AI analysis with game-based opening board and YouTube link."""
+    """Modal dialog: Opening Masterclass using precomputed local pool + YouTube link."""
     st.header(opening_name)
-    with st.spinner("Consulting Grandmaster AI..."):
-        analysis_text = analytics.get_gemini_opening_masterclass(opening_name)
 
-    if not analysis_text:
-        st.warning("Could not generate analysis. Please try again.")
+    pool = _load_masterclass_pool()
+    if not pool:
+        st.warning("Masterclass data is not available yet. Please try again later.")
         return
 
-    explanation = analysis_text.strip()
+    # Try exact match first, then substring match as fallback
+    entry = next((e for e in pool if e.get("name") == opening_name), None)
+    if entry is None:
+        entry = next(
+            (
+                e
+                for e in pool
+                if opening_name.lower() in str(e.get("name", "")).lower()
+                or str(e.get("name", "")).lower() in opening_name.lower()
+            ),
+            None,
+        )
 
-    # Try to derive a representative FEN from an actual game that used this opening
-    board = chess.Board()
+    if entry is None:
+        st.warning("No precomputed masterclass found for this opening.")
+        return
+
+    explanation = str(entry.get("analysis", "") or "").strip()
+    if not explanation:
+        st.warning("Masterclass text is empty for this opening.")
+        return
+
+    fen = str(entry.get("fen", "") or "").strip()
     try:
-        games_df = st.session_state.get("games_df")
-        if isinstance(games_df, pd.DataFrame) and not games_df.empty:
-            df_open = games_df.copy()
-            opening_series = df_open.get("opening", pd.Series(index=df_open.index, dtype="object")).fillna("")
-            eco_series = df_open.get("eco", pd.Series(index=df_open.index, dtype="object")).fillna("")
-            opening_key = opening_series.where(opening_series.str.len() > 0, eco_series)
-            opening_key = opening_key.replace("", "Unknown")
-            df_open["opening_display"] = opening_key.apply(_format_opening_label)
-            match = df_open[df_open["opening_display"] == opening_name]
-            if not match.empty:
-                pgn_raw = str(match.iloc[0].get("pgn", "") or "")
-                if pgn_raw.strip():
-                    game = chess.pgn.read_game(io.StringIO(pgn_raw.strip()))
-                    if game is not None:
-                        board = game.board()
-                        for idx, move in enumerate(game.mainline_moves()):
-                            if idx >= 10:  # 8–10 plies to reach opening structure
-                                break
-                            board.push(move)
+        board = chess.Board(fen) if fen else chess.Board()
     except Exception:
-        # Fallback to default starting board if anything fails
         board = chess.Board()
 
     col1, col2 = st.columns([1, 1.5])
