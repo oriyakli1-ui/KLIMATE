@@ -210,6 +210,12 @@ def _inject_global_styles() -> None:
             max-width: 1200px;
         }
 
+        /* Global label styling (e.g. filter labels) */
+        label {
+            color: #F8FAFC !important;
+            font-weight: 600;
+        }
+
         /* Hero section */
         .klimate-hero-title {
             font-size: 2.4rem;
@@ -343,6 +349,16 @@ def _inject_global_styles() -> None:
             opacity: 1;
         }
 
+        /* Brighter alert/insight text (e.g. Spatial Analysis insights) */
+        div[data-testid="stAlert"] {
+            color: #F8FAFC !important;
+            font-weight: 600;
+        }
+        div[data-testid="stAlert"] p {
+            color: #F8FAFC !important;
+            font-weight: 600;
+        }
+
         /* Heatmaps: Label and Title Styling */
         .plotly-graph-div .g-gtitle text,
         .plotly-graph-div .g-axis text,
@@ -359,6 +375,16 @@ def _inject_global_styles() -> None:
         }
         .plotly-graph-div .hoverlayer .hovertext text {
             fill: #F1F5F9 !important;  /* off-white text */
+        }
+
+        /* Tabs (Activity Map / Vulnerability Map) */
+        .stTabs [role="tab"] {
+            color: #F8FAFC !important;
+            font-weight: 600;
+        }
+        .stTabs [role="tab"][aria-selected="true"] {
+            border-bottom: 2px solid rgba(16, 185, 129, 0.9);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
         }
 
         .masterpiece-card {
