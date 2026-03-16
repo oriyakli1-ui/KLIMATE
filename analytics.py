@@ -431,12 +431,12 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
         return ""
 
     prompt = (
-        f'Analyze the chess opening "{name}". '
-        "Provide a detailed, highly informative masterclass explaining the key positional and tactical ideas, "
-        "including the most important mainline and sideline variations. Do NOT be overly concise: aim for a rich, coaching-style explanation. "
-        "Explain: 1) The core strategic ideas and pawn structure plans. 2) Typical piece placement and attacking motifs. "
-        "3) Common mistakes by club players and how to punish them. 4) How to play AGAINST this opening with concrete plans. "
-        "Use clear markdown sections and bullet points so it is easy to skim and learn from."
+        f"Write a punchy, highly informative 3-bullet-point masterclass on the chess opening \"{name}\". "
+        "Do not write introductory or concluding paragraphs. "
+        "Just give 3 bolded bullet points explaining: (1) the core idea of the opening, "
+        "(2) one key attacking plan, and (3) one key defensive plan. "
+        "Keep the total response under 80 words so it generates instantly. "
+        "DO NOT cut off mid-sentence."
     )
 
     try:
@@ -444,10 +444,15 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
         import streamlit as st
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(
-            prompt,
-            generation_config={"max_output_tokens": 1024},
-        )
+        try:
+            response = model.generate_content(
+                prompt,
+                generation_config={"max_output_tokens": 400},
+                request_options={"timeout": 15},
+            )
+        except Exception:
+            return "Analysis timed out. Please try again."
+
         text = getattr(response, "text", None)
         if isinstance(text, str) and text.strip():
             return text.strip()
@@ -711,22 +716,20 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     except Exception:
         pass
 
-    # 5. GM playstyle match based on deadliest opening
-    gm_match = "Hikaru Nakamura (Fast & Unpredictable)"
-    try:
-        op_lower = str(deadliest_opening).lower()
-        if any(x in op_lower for x in ["caro", "french", "slav", "london", "petrov", "queen's pawn", "colle", "four knights", "philidor"]):
-            gm_match = "Anatoly Karpov (Solid & Positional)"
-        elif any(x in op_lower for x in ["sicilian", "king's gambit", "evan", "dutch", "alekhine", "danish", "vienna", "scotch", "latvian"]):
-            gm_match = "Mikhail Tal (Aggressive Tactician)"
-        elif any(x in op_lower for x in ["ruy lopez", "queen's gambit", "english", "catalan", "reti", "italian", "giuoco", "spanish", "bishop's"]):
-            gm_match = "Magnus Carlsen (Universal & Precise)"
-        elif any(x in op_lower for x in ["indian", "grunfeld", "pirc", "modern", "scandinavian", "benoni", "benko", "trompowsky"]):
-            gm_match = "Garry Kasparov (Dynamic & Fierce)"
-        else:
-            # Catches completely random openings, generic 'King's Pawn Game', and hypermodern weird stuff
-            gm_match = "Hikaru Nakamura (Fast & Unpredictable)"
-    except Exception:
+    # 5. GM playstyle match based on deadliest opening (punctuation-robust)
+    op_clean = str(deadliest_opening).lower().replace("'", "").replace("’", "").replace("-", " ")
+
+    if "not enough data" in op_clean or "n/a" in op_clean:
+        gm_match = "Unknown (Play more games!)"
+    elif any(x in op_clean for x in ["caro", "french", "slav", "london", "petrov", "queens pawn", "colle", "four knights", "philidor"]):
+        gm_match = "Anatoly Karpov (Solid & Positional)"
+    elif any(x in op_clean for x in ["sicilian", "kings gambit", "evan", "dutch", "alekhine", "danish", "vienna", "scotch", "latvian"]):
+        gm_match = "Mikhail Tal (Aggressive Tactician)"
+    elif any(x in op_clean for x in ["ruy lopez", "queens gambit", "english", "catalan", "reti", "italian", "giuoco", "spanish", "bishops"]):
+        gm_match = "Magnus Carlsen (Universal & Precise)"
+    elif any(x in op_clean for x in ["indian", "grunfeld", "pirc", "modern", "scandinavian", "benoni", "benko", "trompowsky"]):
+        gm_match = "Garry Kasparov (Dynamic & Fierce)"
+    else:
         gm_match = "Hikaru Nakamura (Fast & Unpredictable)"
 
     return {
