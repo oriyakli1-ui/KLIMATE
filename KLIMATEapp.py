@@ -22,6 +22,23 @@ import analytics
 from data_engine import ChessComAPIError, fetch_player_games
 
 
+# Force the masterclass pool path to be relative to this script file
+current_dir = os.path.dirname(__file__)
+POOL_PATH = os.path.join(current_dir, "masterclass_pool.pkl")
+
+masterclass_pool: list[dict] = []
+if os.path.exists(POOL_PATH):
+    try:
+        with open(POOL_PATH, "rb") as _f:
+            loaded = pickle.load(_f)
+        if isinstance(loaded, list):
+            masterclass_pool = loaded
+    except Exception as _exc:  # noqa: BLE001
+        st.error(f"Critical Error: Failed to load the masterclass pool at {POOL_PATH}: {_exc}")
+else:
+    st.error(f"Critical Error: Cannot find the masterclass pool at {POOL_PATH}")
+
+
 def _format_game_label(row) -> str:
     """Create a compact label for a game row."""
     white = str(row.get("white_player", "White"))
@@ -34,19 +51,6 @@ def _format_game_label(row) -> str:
     if result:
         parts.append(result)
     return " | ".join(parts)
-
-
-@st.cache_resource(show_spinner=False)
-def _load_masterclass_pool() -> list[dict]:
-    """Load the precomputed opening masterclass pool from disk."""
-    try:
-        with open("masterclass_pool.pkl", "rb") as f:
-            data = pickle.load(f)
-        if isinstance(data, list):
-            return data
-    except Exception:
-        pass
-    return []
 
 
 def _render_engine_deep_dive(games_df, username: str) -> None:
@@ -846,19 +850,18 @@ def show_opening_masterclass(opening_name: str, entry: dict | None = None) -> No
 
     # If a specific pool entry was provided (from Strategic Blindspots), use it directly.
     if entry is None:
-        pool = _load_masterclass_pool()
-        if not pool:
+        if not masterclass_pool:
             st.info("Masterclass data is not available yet. Please try again later.")
             return
 
         opening_lower = opening_name.lower()
         # Exact match first, then substring match as a fallback.
-        entry = next((e for e in pool if str(e.get("name", "")).lower() == opening_lower), None)
+        entry = next((e for e in masterclass_pool if str(e.get("name", "")).lower() == opening_lower), None)
         if entry is None:
             entry = next(
                 (
                     e
-                    for e in pool
+                    for e in masterclass_pool
                     if opening_lower in str(e.get("name", "")).lower()
                     or str(e.get("name", "")).lower() in opening_lower
                 ),
@@ -960,43 +963,40 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     agg["LossRate"] = agg["Loss"] / agg["Total"]
     agg["DrawRate"] = agg["Draw"] / agg["Total"]
 
-    # Blindspots: openings with the highest loss rate
-    blindspots = agg.sort_values(["LossRate", "WinRate"], ascending=[False, True]).head(5)
+    # Build the FULL openings performance table (no head() yet).
+    openings_perf = (
+        agg.reset_index()
+        .rename(columns={"opening_key": "opening_raw"})
+        .copy()
+    )
+    openings_perf["Opening"] = openings_perf["opening_raw"].apply(_format_opening_label)
 
-    # Prepare display labels using existing formatter
-    blindspots = blindspots.reset_index().rename(columns={"opening_key": "opening_raw"})
-    blindspots["Opening"] = blindspots["opening_raw"].apply(_format_opening_label)
-
-    # Load the precomputed masterclass pool and strictly filter to openings we support
-    pool_path = "masterclass_pool.pkl"
-    if os.path.exists(pool_path):
-        try:
-            with open(pool_path, "rb") as f:
-                masterclass_pool = pickle.load(f)
-        except Exception:
-            masterclass_pool = []
-    else:
-        masterclass_pool = []
-
-    pool_names = [str(item.get("name", "")).lower() for item in masterclass_pool]
-
+    # 1) Match with pool FIRST (on the full table)
     def get_matching_pool_item(user_opening: object) -> dict | None:
-        user_op_lower = str(user_opening or "").lower()
+        user_op_lower = str(user_opening).lower()
         for item in masterclass_pool:
             name_l = str(item.get("name", "")).lower()
             if name_l and name_l in user_op_lower:
                 return item
         return None
 
-    # Attach matching pool item to each blindspot row, then filter to only those with a match
-    blindspots["pool_item"] = blindspots["Opening"].apply(get_matching_pool_item)
-    blindspots = blindspots[blindspots["pool_item"].notnull()]
+    openings_perf["pool_item"] = openings_perf["Opening"].apply(get_matching_pool_item)
 
-    if blindspots.empty:
-        st.info(
-            "You play very unique openings! Play more standard openings to unlock deep-dive Masterclasses."
-        )
+    # 2) Filter: keep only openings that exist in the pool
+    valid_openings_df = openings_perf[openings_perf["pool_item"].notnull()].copy()
+
+    if valid_openings_df.empty:
+        st.info("Play more standard openings to unlock Masterclasses.")
         return
+
+    # 3) Sort by worst performance (highest loss rate, then lowest win rate)
+    worst_openings_df = valid_openings_df.sort_values(
+        by=["LossRate", "WinRate"],
+        ascending=[False, True],
+    )
+
+    # 4) Take top 3 ONLY AFTER filtering + sorting
+    blindspots = worst_openings_df.head(3).copy()
 
     st.header("Strategic Blindspots")
     st.info(
@@ -1065,7 +1065,7 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
         pool_item = row["pool_item"]
         with cols[i]:
             if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
-                # Pass the exact matched pool entry so the dialog always has valid FEN + analysis.
+                # Directly show the dialog using the matched pool entry (no API calls).
                 show_opening_masterclass(str(pool_item.get("name", opening_name)), entry=pool_item)
 
 def main() -> None:
