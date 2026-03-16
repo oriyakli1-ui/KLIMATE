@@ -433,14 +433,15 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
     prompt = (
         f"Write a highly informative 3-bullet-point chess masterclass on the {name}. "
         "You must write at least 100 words. Complete every sentence fully. Do not cut off mid-sentence. "
-        "Do not write an introduction or conclusion – only 3 bolded bullet points explaining the core tactical and positional ideas."
+        "Do not write an introduction or conclusion – only 3 bolded bullet points explaining the core tactical and positional ideas. "
+        "IMPORTANT: Output ONLY the 3 bullet points. No conversational filler like 'Here is your masterclass'."
     )
 
     try:
         import google.generativeai as genai
         import streamlit as st
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         try:
             response = model.generate_content(
                 prompt,
@@ -452,6 +453,7 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
 
         text = getattr(response, "text", None)
         if isinstance(text, str) and text.strip():
+            print(f"DEBUG: Gemini Output Length: {len(text)}")
             return text  # return full string, no slicing
         return "AI Coach is currently resting. The response did not contain usable text."
     except Exception as e:

@@ -146,7 +146,7 @@ def _render_engine_deep_dive(games_df, username: str) -> None:
     critical_fen = str(b.get("critical_fen", "") or "").strip()
     actual_san = str(b.get("actual_san", "") or "").strip()
 
-    col1, col2 = st.columns([1, 1.5])
+    col1, col2 = st.columns([1, 3])
     with col1:
         if not critical_fen:
             st.info("No board position available for this blunder.")
@@ -888,6 +888,7 @@ def show_opening_masterclass(opening_name: str) -> None:
             f"<div style='font-size: 1.15rem; font-weight: 600; line-height: 1.7;'>\n\n{explanation}\n</div>",
             unsafe_allow_html=True,
         )
+        st.divider()
 
 
 def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
