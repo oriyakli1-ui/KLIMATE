@@ -843,9 +843,9 @@ def analyze_game_with_chess_api(pgn_string: str, max_plies: int = 40) -> pd.Data
     For each ply, advances the game one move, posts the resulting FEN to the API,
     and records evaluation + best move.
 
-    POST:
+        POST:
         https://chess-api.com/v1
-        json={"fen": fen, "depth": 8}
+        json={"fen": fen, "depth": 6}
 
     Parameters
     ----------
@@ -896,8 +896,8 @@ def analyze_game_with_chess_api(pgn_string: str, max_plies: int = 40) -> pd.Data
         try:
             resp = requests.post(
                 "https://chess-api.com/v1",
-                json={"fen": fen, "depth": 8},
-                timeout=15,
+                json={"fen": fen, "depth": 6},
+                timeout=10,
             )
             resp.raise_for_status()
             data = resp.json() if resp.content else {}

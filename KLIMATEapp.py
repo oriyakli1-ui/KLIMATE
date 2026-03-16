@@ -219,7 +219,7 @@ def _inject_global_styles() -> None:
         }
         .klimate-hero-subtitle {
             font-size: 1rem;
-            color: #9CA3AF;
+            color: #D1D5DB;
             text-align: center;
             margin-bottom: 1.5rem;
         }
@@ -236,7 +236,7 @@ def _inject_global_styles() -> None:
             font-size: 0.9rem;
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            color: #9CA3AF;
+            color: #D1D5DB;
             margin-bottom: 0.3rem;
         }
         .klimate-metric-value {
@@ -369,7 +369,7 @@ def _inject_global_styles() -> None:
             margin-bottom: 2rem;
             color: #F8FAFC;
         }
-        .mp-header { color: #9CA3AF; font-size: 0.9rem; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .mp-header { color: #D1D5DB; font-size: 0.9rem; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; }
         .mp-username { 
             font-size: 2.8rem; font-weight: 800; margin: 0; 
             background: linear-gradient(90deg, #06B6D4, #10B981);
@@ -385,7 +385,7 @@ def _inject_global_styles() -> None:
             border-color: rgba(6, 182, 212, 0.4);
         }
         .mp-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
-        .mp-label { color: #9CA3AF; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
+        .mp-label { color: #D1D5DB; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
         .mp-value { color: #FFFFFF; font-size: 1.5rem; font-weight: 800; margin-top: 0.3rem; letter-spacing: 0.02em; }
         .mp-footer { margin-top: 2rem; font-size: 0.85rem; color: #475569; letter-spacing: 0.1em; }
         </style>
@@ -422,27 +422,27 @@ def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
     # The HTML for the card itself (must have id='klimate-masterpiece-card')
     card_html = f"""
     <div id="klimate-masterpiece-card" class="masterpiece-card" style="position: relative; background: radial-gradient(circle at 50% 0%, #1E293B, #020617 80%); padding: 3rem 2rem; border-radius: 24px; color: white; text-align: center; font-family: sans-serif;">
-        <div style="color: #9CA3AF; letter-spacing: 0.2em; font-size: 0.9rem; margin-bottom: 0.5rem;">KLIMATE CHESS DNA</div>
+        <div style="color: #D1D5DB; letter-spacing: 0.2em; font-size: 0.9rem; margin-bottom: 0.5rem;">KLIMATE CHESS DNA</div>
         <h1 style="font-size: 3.2rem; margin: 0; background: linear-gradient(90deg, #06B6D4, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{username.upper()}</h1>
         <div style="color: #E2E8F0; font-weight: 600; margin-top: 0.5rem; text-transform: uppercase;">{wrapped.get('player_persona', 'Tactician')}</div>
         <div style="color: #475569; font-size: 0.8rem; margin-bottom: 2rem;">{current_date}</div>
         
         <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(16,185,129,0.4); border-radius: 20px; padding: 2rem; margin-bottom: 1.5rem;">
             <div style="font-size: 4rem; font-weight: 900; color: #10B981;">{wrapped['top_rating']}</div>
-            <div style="color: #9CA3AF; font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase;">👑 Peak Rating</div>
+            <div style="color: #D1D5DB; font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase;">👑 Peak Rating</div>
         </div>
         
         <div style="display: flex; justify-content: space-between; gap: 10px;">
             <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
-                <div style="font-size: 0.7rem; color: #9CA3AF; text-transform: uppercase;">🏆 Victories</div>
+                <div style="font-size: 0.7rem; color: #D1D5DB; text-transform: uppercase;">🏆 Victories</div>
                 <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['total_victories']}</div>
             </div>
             <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
-                <div style="font-size: 0.7rem; color: #9CA3AF; text-transform: uppercase;">🗡️ Best Opening</div>
+                <div style="font-size: 0.7rem; color: #D1D5DB; text-transform: uppercase;">🗡️ Best Opening</div>
                 <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['deadliest_opening']}</div>
             </div>
             <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
-                <div style="font-size: 0.7rem; color: #9CA3AF; text-transform: uppercase;">⚡ Prime Time</div>
+                <div style="font-size: 0.7rem; color: #D1D5DB; text-transform: uppercase;">⚡ Prime Time</div>
                 <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['golden_hour']}</div>
             </div>
         </div>
@@ -963,7 +963,6 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
         with cols[i]:
             if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
                 show_opening_masterclass(opening_name)
-                st.rerun()
 
 def main() -> None:
     """Main entry point for the Klimate Streamlit app."""
@@ -983,7 +982,7 @@ def main() -> None:
         with logo_col:
             st.image("logo.png", width="stretch")
         st.markdown(
-            "<p style='text-align: center; color: #9CA3AF; font-size: 1.2rem; "
+            "<p style='text-align: center; color: #D1D5DB; font-size: 1.2rem; "
             "font-weight: 300; margin-top: -15px; margin-bottom: 40px; letter-spacing: 1px;'>"
             "Decode Your Chess DNA. Elevate Your Mental Game.</p>",
             unsafe_allow_html=True,
