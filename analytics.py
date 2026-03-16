@@ -447,7 +447,7 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
         try:
             response = model.generate_content(
                 prompt,
-                generation_config={"max_output_tokens": 400},
+                generation_config={"max_output_tokens": 1024},
                 request_options={"timeout": 15},
             )
         except Exception:
@@ -455,7 +455,7 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
 
         text = getattr(response, "text", None)
         if isinstance(text, str) and text.strip():
-            return text.strip()
+            return text  # return full string, no slicing
         return "AI Coach is currently resting. The response did not contain usable text."
     except Exception as e:
         return "AI Coach is currently resting. Error: " + str(e)
@@ -686,21 +686,16 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
         pass
 
     # 3. Deadliest Opening
-    deadliest_opening = "Not enough data"
+    deadliest_opening_name = "Unknown"
+    deadliest_opening_display = "Not enough data"
     try:
-        import re
-
         openings_df = analyze_openings(df, username)
         valid_openings = openings_df[openings_df["total_games"] >= 3]
         if not valid_openings.empty:
             best_op_row = valid_openings.sort_values(by="true_win_rate", ascending=False).iloc[0]
-            raw_name = str(best_op_row["opening"])
-            if "/" in raw_name:
-                raw_name = raw_name.split("/")[-1]
-            raw_name = raw_name.replace("-", " ")
-            clean_name = re.split(r"\d", raw_name)[0].strip()
+            deadliest_opening_name = str(best_op_row["opening"])
             win_rate = best_op_row["true_win_rate"] * 100
-            deadliest_opening = f"{clean_name} ({win_rate:.0f}%)"
+            deadliest_opening_display = f"{deadliest_opening_name} ({win_rate:.0f}%)"
     except Exception:
         pass
 
@@ -716,12 +711,11 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     except Exception:
         pass
 
-    # 5. GM playstyle match based on deadliest opening (punctuation-robust)
-    op_clean = str(deadliest_opening).lower().replace("'", "").replace("’", "").replace("-", " ")
-
-    if "not enough data" in op_clean or "n/a" in op_clean:
+    # 4. GM Match (Based ONLY on the raw name, ignoring percentages)
+    op_clean = deadliest_opening_name.lower().replace("'", "").replace("-", " ")
+    if "unknown" in op_clean or op_clean == "":
         gm_match = "Unknown (Play more games!)"
-    elif any(x in op_clean for x in ["caro", "french", "slav", "london", "petrov", "queens pawn", "colle", "four knights", "philidor"]):
+    elif any(x in op_clean for x in ["caro", "french", "slav", "london", "petrov", "queens pawn", "colle", "philidor"]):
         gm_match = "Anatoly Karpov (Solid & Positional)"
     elif any(x in op_clean for x in ["sicilian", "kings gambit", "evan", "dutch", "alekhine", "danish", "vienna", "scotch", "latvian"]):
         gm_match = "Mikhail Tal (Aggressive Tactician)"
@@ -735,7 +729,7 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     return {
         "top_rating": top_rating,
         "win_percentage": win_percentage,
-        "deadliest_opening": deadliest_opening,
+        "deadliest_opening": deadliest_opening_display,
         "golden_hour": golden_hour,
         "gm_match": gm_match,
     }
