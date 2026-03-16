@@ -693,7 +693,14 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
         valid_openings = openings_df[openings_df["total_games"] >= 3]
         if not valid_openings.empty:
             best_op_row = valid_openings.sort_values(by="true_win_rate", ascending=False).iloc[0]
-            deadliest_opening_name = str(best_op_row["opening"])
+            raw_opening = str(best_op_row["opening"])
+
+            # If the opening is a URL, extract the last part and clean it
+            if "http" in raw_opening or "www." in raw_opening:
+                deadliest_opening_name = raw_opening.rstrip("/").split("/")[-1].replace("-", " ")
+            else:
+                deadliest_opening_name = raw_opening
+
             win_rate = best_op_row["true_win_rate"] * 100
             deadliest_opening_display = f"{deadliest_opening_name} ({win_rate:.0f}%)"
     except Exception:
@@ -717,7 +724,7 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
         gm_match = "Unknown (Play more games!)"
     elif any(x in op_clean for x in ["caro", "french", "slav", "london", "petrov", "queens pawn", "colle", "philidor"]):
         gm_match = "Anatoly Karpov (Solid & Positional)"
-    elif any(x in op_clean for x in ["sicilian", "kings gambit", "evan", "dutch", "alekhine", "danish", "vienna", "scotch", "latvian"]):
+    elif any(x in op_clean for x in ["sicilian", "kings gambit", "evan", "dutch", "alekhine", "danish", "vienna", "scotch", "latvian", "englund", "morra"]):
         gm_match = "Mikhail Tal (Aggressive Tactician)"
     elif any(x in op_clean for x in ["ruy lopez", "queens gambit", "english", "catalan", "reti", "italian", "giuoco", "spanish", "bishops"]):
         gm_match = "Magnus Carlsen (Universal & Precise)"
