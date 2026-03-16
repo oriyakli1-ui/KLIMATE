@@ -355,7 +355,7 @@ def get_real_time_ratings(username: str) -> Dict[str, object]:
     }
 
 
-def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str) -> str:
+def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
     """
     Use Gemini to generate a short coaching explanation for a specific blunder or key moment.
     """
@@ -363,13 +363,17 @@ def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str) -> 
         return "AI Coach is currently resting. Position (FEN) is unavailable."
 
     prompt = (
-        "You are a master chess coach. "
-        f"The board FEN is {fen}. "
-        f"The player played '{actual_move}' which was a mistake. "
-        f"The best engine move is '{best_move}'. "
-        "Explain in 2-3 short, friendly sentences directly to the player why their move "
-        "was bad and why the engine's move is better. Do not use overly complex chess "
-        "notation, focus on concepts like space, defense, threats, or material."
+        "You are an elite Chess Psychology Coach. "
+        f"The current board position (FEN) is: {fen}. "
+        f"The player played '{actual_move}', but the best engine move was '{best_move}'. "
+        f"This mistake cost the player {user_loss:.2f} points in evaluation. "
+        "Your goal is to explain the 'Why' behind the mistake from a human perspective. "
+        "Analyze if this looks like: "
+        "- Panic/Defensive oversight. "
+        "- Greed (grabbing a pawn while ignoring a threat). "
+        "- Tunnel vision (focusing on one area while missing the big picture). "
+        "- Impatience in a winning position. "
+        "Explain in 2-3 punchy, encouraging sentences. Focus on the human psychology of the error and give one actionable tip to avoid this pattern next time."
     )
 
     try:
@@ -416,6 +420,7 @@ def get_gemini_opening_deep_dive(opening_name: str) -> str:
         return "AI Coach is currently resting. Error: " + str(e)
 
 
+@st.cache_data(show_spinner=False, ttl=300)
 def get_gemini_opening_masterclass(opening_name: str) -> str:
     """
     Use Gemini to generate a punchy, actionable masterclass for an opening,
@@ -524,12 +529,12 @@ def analyze_time_of_day(
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: 'hour' (0-23), 'total_games', 'true_win_rate'.
+        DataFrame with columns: 'hour', 'wins', 'losses', 'draws', 'total_games', 'true_win_rate'.
         Sorted by hour ascending. Empty DataFrame with these columns if no data.
     """
     player_games = _filter_player_games(df, username)
     if player_games.empty:
-        return pd.DataFrame(columns=["hour", "total_games", "true_win_rate"])
+        return pd.DataFrame(columns=["hour", "wins", "losses", "draws", "total_games", "true_win_rate"])
 
     df_work = player_games.copy()
     df_work["date_utc"] = pd.to_datetime(df_work["date_utc"], utc=True)
@@ -546,16 +551,26 @@ def analyze_time_of_day(
         is_white=is_white,
     )
     df_work["score"] = scores
+    df_work["win"] = (scores == 1.0).astype(int)
+    df_work["loss"] = (scores == 0.0).astype(int)
+    df_work["draw"] = (scores == 0.5).astype(int)
 
     grouped = (
         df_work.groupby("hour", as_index=False)
-        .agg(total_games=("score", "count"), true_win_rate=("score", "mean"))
+        .agg(
+            wins=("win", "sum"),
+            losses=("loss", "sum"),
+            draws=("draw", "sum"),
+            total_games=("score", "count"),
+            true_win_rate=("score", "mean"),
+        )
     )
 
-    # Ensure all hours 0-23 present (optional: fill missing with 0 games)
+    # Ensure all hours 0-23 present
     all_hours = pd.DataFrame({"hour": range(24)})
     grouped = all_hours.merge(grouped, on="hour", how="left")
-    grouped["total_games"] = grouped["total_games"].fillna(0).astype(int)
+    for col in ["wins", "losses", "draws", "total_games"]:
+        grouped[col] = grouped[col].fillna(0).astype(int)
     grouped["true_win_rate"] = grouped["true_win_rate"].fillna(0.0)
     grouped = grouped.sort_values("hour").reset_index(drop=True)
 

@@ -186,7 +186,7 @@ def _render_engine_deep_dive(games_df, username: str) -> None:
 
         with st.spinner("🤖 AI Coach is analyzing the position..."):
             explanation = analytics.get_gemini_coach_explanation(
-                b["critical_fen"], actual, best
+                b["critical_fen"], actual, best, eval_swing
             )
         st.info(f"**🤖 Your AI Coach:**\n\n{explanation}")
 
@@ -409,15 +409,27 @@ def _render_metric_card(
     )
 
 
+def _render_dashboard_metric_card(title: str, value_str: str) -> None:
+    """Render a Bento-style metric card (title + value only, no badge)."""
+    st.markdown(
+        f"""
+        <div class="klimate-card">
+            <div class="klimate-metric-label">{title}</div>
+            <div class="klimate-metric-value">{value_str}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # Minimum games per hour to show win rate on the line (statistically robust)
 MIN_GAMES_FOR_WIN_RATE_LINE = 2
 
 
 def _render_cognitive_clock_chart(time_of_day_df):
     """
-    Dual-axis combo chart: bars = total_games (right), line = true_win_rate (left).
-    Win rate line uses only hours with total_games > MIN_GAMES_FOR_WIN_RATE_LINE
-    so the line does not misleadingly dip to 0%.
+    Dual-axis chart: stacked bars (Wins/Draws/Losses) on primary Y-axis,
+    True Win Rate line on secondary Y-axis. Slate dark theme with unified hover.
     """
     if time_of_day_df.empty or time_of_day_df["total_games"].sum() == 0:
         st.info("Not enough data to show time-of-day performance yet.")
@@ -426,40 +438,40 @@ def _render_cognitive_clock_chart(time_of_day_df):
     df = time_of_day_df.copy()
     df["hour_label"] = df["hour"].apply(lambda h: f"{h:02d}:00")
 
-    # Insight: filter hours with >= 2 games, then find best/worst by true_win_rate
-    df_robust = df[df["total_games"] >= 2]
-    if not df_robust.empty:
-        best_idx = df_robust["true_win_rate"].idxmax()
-        worst_idx = df_robust["true_win_rate"].idxmin()
-        best_row = df_robust.loc[best_idx]
-        worst_row = df_robust.loc[worst_idx]
-        best_hour = int(best_row["hour"])
-        worst_hour = int(worst_row["hour"])
-        max_wr_pct = best_row["true_win_rate"] * 100
-        min_wr_pct = worst_row["true_win_rate"] * 100
-        st.success(
-            f"**Insight:** Your peak performance is at **{best_hour:02d}:00** with a **{max_wr_pct:.1f}%** win rate. "
-            f"You tend to struggle around **{worst_hour:02d}:00** ({min_wr_pct:.1f}% win rate)."
-        )
-    else:
-        st.info("Play more games at different hours to see time-of-day insights.")
-
-    # For the line: only hours with enough games (avoid misleading 0% dips)
+    # For win-rate line: only hours with enough games to avoid misleading 0% dips
     df_line = df[df["total_games"] >= MIN_GAMES_FOR_WIN_RATE_LINE].copy()
     df_line = df_line.sort_values("hour").reset_index(drop=True)
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    # Bars: total games (primary = left by default; we'll put bars on primary and line on secondary, or vice versa — spec: bars right, line left)
+    # Primary Y-axis: stacked bars (Wins, Draws, Losses)
     fig.add_trace(
         go.Bar(
             x=df["hour_label"],
-            y=df["total_games"],
-            name="Games",
-            marker_color="#334155",
+            y=df["wins"],
+            name="Wins",
+            marker_color="#10B981",
         ),
-        secondary_y=True,
+        secondary_y=False,
     )
-    # Line: true win rate (only where we have enough games)
+    fig.add_trace(
+        go.Bar(
+            x=df["hour_label"],
+            y=df["draws"],
+            name="Draws",
+            marker_color="#64748B",
+        ),
+        secondary_y=False,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=df["hour_label"],
+            y=df["losses"],
+            name="Losses",
+            marker_color="#EF4444",
+        ),
+        secondary_y=False,
+    )
+    # Secondary Y-axis: True Win Rate line
     if not df_line.empty:
         fig.add_trace(
             go.Scatter(
@@ -470,33 +482,59 @@ def _render_cognitive_clock_chart(time_of_day_df):
                 line=dict(color="#06B6D4", width=2),
                 marker=dict(size=8, color="#06B6D4"),
             ),
-            secondary_y=False,
+            secondary_y=True,
         )
 
     fig.update_layout(
+        barmode="stack",
+        hovermode="x unified",
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#E5E7EB"),
-        margin=dict(l=20, r=20, t=30, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(color="#E5E7EB"),
+        ),
     )
-    fig.update_xaxes(title_text="Hour of the Day", gridcolor="rgba(148, 163, 184, 0.25)")
+    fig.update_xaxes(title_text="Hour of the Day", gridcolor="rgba(148, 163, 184, 0.2)")
+    fig.update_yaxes(
+        title_text="Games (Wins / Draws / Losses)",
+        secondary_y=False,
+        gridcolor="rgba(148, 163, 184, 0.2)",
+    )
     fig.update_yaxes(
         title_text="True Win Rate",
-        secondary_y=False,
+        secondary_y=True,
         tickformat=".0%",
         range=[0, 1.02],
-        gridcolor="rgba(148, 163, 184, 0.25)",
-    )
-    fig.update_yaxes(
-        title_text="Total Games",
-        secondary_y=True,
         gridcolor="rgba(148, 163, 184, 0.15)",
     )
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
+
+    # Text insights below the chart
+    df_with_games = df[df["total_games"] >= MIN_GAMES_FOR_WIN_RATE_LINE]
+    if not df_with_games.empty:
+        peak_row = df_with_games.loc[df_with_games["true_win_rate"].idxmax()]
+        peak_hour = int(peak_row["hour"])
+        peak_pct = peak_row["true_win_rate"] * 100
+        st.markdown(
+            f"**Peak Performance:** Your highest win rate is at **{peak_hour:02d}:00**, "
+            f"where you win **{peak_pct:.1f}%** of your games."
+        )
+    volume_row = df.loc[df["total_games"].idxmax()]
+    volume_hour = int(volume_row["hour"])
+    st.markdown(
+        f"**Volume:** You play the most games at **{volume_hour:02d}:00**. "
+        "Is this when you are at your best?"
+    )
 
 
 def _render_overview_page(games_df, username: str) -> None:
@@ -514,15 +552,15 @@ def _render_overview_page(games_df, username: str) -> None:
     st.markdown("<div style='margin-top: 2.5rem;'></div>", unsafe_allow_html=True)
 
     # Live ratings + streak row
-    live_cols = st.columns(4)
-    with live_cols[0]:
-        st.metric("Rapid Rating", live_ratings.get("rapid", "N/A"))
-    with live_cols[1]:
-        st.metric("Blitz Rating", live_ratings.get("blitz", "N/A"))
-    with live_cols[2]:
-        st.metric("Bullet Rating", live_ratings.get("bullet", "N/A"))
-    with live_cols[3]:
-        st.metric("Current Streak", streak)
+    metric_cols = st.columns(4)
+    with metric_cols[0]:
+        _render_dashboard_metric_card(title="Rapid Rating", value_str=str(live_ratings.get("rapid", "N/A")))
+    with metric_cols[1]:
+        _render_dashboard_metric_card(title="Blitz Rating", value_str=str(live_ratings.get("blitz", "N/A")))
+    with metric_cols[2]:
+        _render_dashboard_metric_card(title="Bullet Rating", value_str=str(live_ratings.get("bullet", "N/A")))
+    with metric_cols[3]:
+        _render_dashboard_metric_card(title="Current Streak", value_str=streak)
 
     st.divider()
 
@@ -770,6 +808,7 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
         yaxis=dict(title="Opening"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
+    fig.update_layout(legend=dict(font=dict(color="#E5E7EB")))
 
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
@@ -783,6 +822,7 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
         with cols[i]:
             if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
                 show_opening_masterclass(opening_name)
+                st.rerun()
 
 def main() -> None:
     """Main entry point for the Klimate Streamlit app."""
