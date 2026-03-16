@@ -676,13 +676,19 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     # 3. Deadliest Opening
     deadliest_opening = "Not enough data"
     try:
+        import re
+
         openings_df = analyze_openings(df, username)
         valid_openings = openings_df[openings_df["total_games"] >= 3]
         if not valid_openings.empty:
             best_op_row = valid_openings.sort_values(by="true_win_rate", ascending=False).iloc[0]
-            op_name = best_op_row["opening"]
+            raw_name = str(best_op_row["opening"])
+            if "/" in raw_name:
+                raw_name = raw_name.split("/")[-1]
+            raw_name = raw_name.replace("-", " ")
+            clean_name = re.split(r"\d", raw_name)[0].strip()
             win_rate = best_op_row["true_win_rate"] * 100
-            deadliest_opening = f"{op_name} ({win_rate:.0f}%)"
+            deadliest_opening = f"{clean_name} ({win_rate:.0f}%)"
     except Exception:
         pass
 

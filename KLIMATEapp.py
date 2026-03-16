@@ -358,14 +358,16 @@ def _inject_global_styles() -> None:
         }
 
         .masterpiece-card {
-            background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(6, 182, 212, 0.3);
-            border-radius: 24px;
-            padding: 2rem;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(6, 182, 212, 0.05);
+            background: radial-gradient(circle at top left, #1E293B, #020617);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(6, 182, 212, 0.15);
             text-align: center;
             margin-bottom: 2rem;
+            color: #F8FAFC;
         }
         .mp-header { color: #9CA3AF; font-size: 0.9rem; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; }
         .mp-username { 
@@ -376,10 +378,15 @@ def _inject_global_styles() -> None:
         }
         .mp-date { color: #64748B; font-size: 0.85rem; margin-bottom: 2rem; }
         .mp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; text-align: left; }
-        .mp-stat-box { background: rgba(2, 6, 23, 0.4); border-radius: 16px; padding: 1.2rem; border: 1px solid rgba(255, 255, 255, 0.05); }
+        .mp-stat-box { background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)); border-radius: 16px; padding: 1.5rem; border: 1px solid rgba(255, 255, 255, 0.08); transition: transform 0.3s ease, box-shadow 0.3s ease; }
+        .mp-stat-box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            border-color: rgba(6, 182, 212, 0.4);
+        }
         .mp-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
         .mp-label { color: #9CA3AF; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
-        .mp-value { color: #F8FAFC; font-size: 1.4rem; font-weight: 700; line-height: 1.2; }
+        .mp-value { color: #FFFFFF; font-size: 1.5rem; font-weight: 800; margin-top: 0.3rem; letter-spacing: 0.02em; }
         .mp-footer { margin-top: 2rem; font-size: 0.85rem; color: #475569; letter-spacing: 0.1em; }
         </style>
         """,
@@ -457,34 +464,23 @@ def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
     )
 
     share_url = "https://klimate.streamlit.app/"
-    linkedin_url = f"https://www.linkedin.com/sharing/share-offsite/?url={share_url}"
-    facebook_url = f"https://www.facebook.com/sharer/sharer.php?u={share_url}"
+    import urllib.parse
+    encoded_url = urllib.parse.quote(share_url)
 
-    c1, c2, c3 = st.columns([1, 1, 1.4])
-    with c1:
-        st.markdown(
-            f'<a href="{linkedin_url}" target="_blank" rel="noopener noreferrer" '
-            'style="display: block; text-align: center; padding: 0.6rem 1rem; background: rgba(6, 182, 212, 0.18); '
-            'border: 1px solid rgba(6, 182, 212, 0.35); color: #E5E7EB; border-radius: 12px; text-decoration: none; font-weight: 700;">'
-            "Share on LinkedIn</a>",
-            unsafe_allow_html=True,
-        )
-    with c2:
-        st.markdown(
-            f'<a href="{facebook_url}" target="_blank" rel="noopener noreferrer" '
-            'style="display: block; text-align: center; padding: 0.6rem 1rem; background: rgba(16, 185, 129, 0.14); '
-            'border: 1px solid rgba(16, 185, 129, 0.28); color: #E5E7EB; border-radius: 12px; text-decoration: none; font-weight: 700;">'
-            "Share on Facebook</a>",
-            unsafe_allow_html=True,
-        )
-    with c3:
-        st.markdown(
-            "<div style='padding: 0.6rem 0.9rem; border-radius: 12px; background: rgba(2, 6, 23, 0.35); "
-            "border: 1px solid rgba(255,255,255,0.06); color: #CBD5E1; font-weight: 600; text-align: center;'>"
-            "📸 Screenshot this card to share on Instagram or your resume!"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+    share_html = f"""
+    <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
+        <a href="https://www.linkedin.com/sharing/share-offsite/?url={encoded_url}" target="_blank" style="background-color: #0A66C2; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.2s;">
+            in Share on LinkedIn
+        </a>
+        <a href="https://www.facebook.com/sharer/sharer.php?u={encoded_url}" target="_blank" style="background-color: #1877F2; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.2s;">
+            f Share on Facebook
+        </a>
+        <div style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: default;">
+            📸 Screenshot for Instagram
+        </div>
+    </div>
+    """
+    st.markdown(share_html, unsafe_allow_html=True)
 
 
 @st.dialog("Your Chess DNA", width="large")
