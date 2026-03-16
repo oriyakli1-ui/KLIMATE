@@ -463,24 +463,69 @@ def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
         unsafe_allow_html=True,
     )
 
-    share_url = "https://klimate.streamlit.app/"
-    import urllib.parse
-    encoded_url = urllib.parse.quote(share_url)
+    # Define the dynamic text to be shared
+    app_url = "https://klimate.streamlit.app/"  # Ensure this is the correct public URL
+    share_text = f"""🚀 I just analyzed my Chess DNA with Klimate.AI! 
 
-    share_html = f"""
-    <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px; flex-wrap: wrap;">
-        <a href="https://www.linkedin.com/sharing/share-offsite/?url={encoded_url}" target="_blank" style="background-color: #0A66C2; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.2s;">
-            in Share on LinkedIn
-        </a>
-        <a href="https://www.facebook.com/sharer/sharer.php?u={encoded_url}" target="_blank" style="background-color: #1877F2; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.2s;">
-            f Share on Facebook
-        </a>
-        <div style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: default;">
-            📸 **Save Card (Screenshot)** for Instagram/Resume
-        </div>
+Here are my stats as an official {wrapped.get('player_persona', 'Tactician')}:
+👑 Peak Rating: {wrapped['top_rating']}
+🏆 Total Victories: {wrapped['total_victories']}
+🗡️ Deadliest Weapon: {wrapped['deadliest_opening']}
+⚡ Prime Time: {wrapped['golden_hour']}
+
+Discover your own hidden chess psychology and strategic blindspots here: {app_url}
+
+#Klimate #Chess #DataScience #AI #ProductAnalytics
+"""
+
+    # Escape the string for JavaScript
+    import json
+    js_share_text = json.dumps(share_text)
+
+    # Create the custom HTML/JS button
+    custom_share_html = f"""
+    <div style="display: flex; justify-content: center; margin-top: 30px;">
+        <button onclick='shareToLinkedIn()' style="background: linear-gradient(90deg, #0A66C2, #004182); color: white; padding: 14px 28px; border: none; border-radius: 12px; font-weight: 700; font-size: 1.1rem; cursor: pointer; box-shadow: 0 8px 15px rgba(10, 102, 194, 0.4); transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; gap: 10px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+            Share to LinkedIn
+        </button>
     </div>
+
+    <script>
+    function shareToLinkedIn() {{
+        // Create a temporary textarea element to copy the text
+        const tempTextArea = document.createElement("textarea");
+        tempTextArea.value = {js_share_text};
+        document.body.appendChild(tempTextArea);
+        tempTextArea.select();
+        tempTextArea.setSelectionRange(0, 99999); // For mobile devices
+        
+        try {{
+            document.execCommand("copy");
+            // Change button text temporarily to show success
+            const btn = document.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '✅ Copied! Opening LinkedIn...';
+            
+            // Open LinkedIn post creation window after a short delay
+            setTimeout(() => {{
+                window.open('https://www.linkedin.com/feed/', '_blank');
+                btn.innerHTML = originalText;
+            }}, 1500);
+            
+        }} catch (err) {{
+            console.error('Oops, unable to copy', err);
+            alert('Unable to copy automatically. Please copy the text manually.');
+        }}
+        
+        document.body.removeChild(tempTextArea);
+    }}
+    </script>
     """
-    st.markdown(share_html, unsafe_allow_html=True)
+
+    # Embed the HTML with components.html to ensure JS execution
+    import streamlit.components.v1 as components
+    components.html(custom_share_html, height=100)
 
 
 @st.dialog("Your Chess DNA", width="large")
