@@ -981,18 +981,21 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
                 return item
         return None
 
-    # 2. Sort by worst performance first
-    worst_df = blindspots_df.sort_values(by="WinRate", ascending=True)
+    # 2. Filter the ENTIRE dataframe against our masterclass pool FIRST
+    blindspots_df["pool_match"] = blindspots_df["Opening"].apply(get_matching_pool_item)
+    matched_openings_df = blindspots_df[blindspots_df["pool_match"].notnull()].copy()
 
-    # 3. Take the Top 10 worst overall
-    top_10_worst = worst_df.head(10).copy()
+    if matched_openings_df.empty:
+        st.info(
+            "You play very unique openings! Play more standard openings to unlock deep-dive Masterclasses."
+        )
+        return
 
-    # 4. Filter this Top 10 against our masterclass pool
-    top_10_worst["pool_match"] = top_10_worst["Opening"].apply(get_matching_pool_item)
-    filtered_top_10 = top_10_worst[top_10_worst["pool_match"].notnull()].copy()
+    # 3. Sort ONLY the matched openings by worst performance (ascending win rate)
+    worst_matched_df = matched_openings_df.sort_values(by="WinRate", ascending=True)
 
-    # 5. Take the Top 3 from the filtered list
-    final_display_df = filtered_top_10.head(3).copy()
+    # 4. Take the Top 3 from this sorted, matched list
+    final_display_df = worst_matched_df.head(3).copy()
 
     if final_display_df.empty:
         st.info(
