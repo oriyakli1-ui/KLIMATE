@@ -476,7 +476,7 @@ def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
             f Share on Facebook
         </a>
         <div style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: default;">
-            📸 Screenshot for Instagram
+            📸 **Save Card (Screenshot)** for Instagram/Resume
         </div>
     </div>
     """
