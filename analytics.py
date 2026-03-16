@@ -432,10 +432,9 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
 
     prompt = (
         f'Analyze the chess opening "{name}". '
-        "CRITICAL: The very first line of your response MUST be ONLY the standard FEN string of the position after the defining moves of this opening. "
-        "Starting from the second line, provide a beautifully formatted, highly educational masterclass. "
-        "Include: 1. The Core Idea. 2. How to defend against it (if the opponent plays it) with specific plans. 3. How to exploit it/gain an advantage. "
-        "Use markdown, headers, and bullet points to make it visually accessible and easy to learn from."
+        "Provide a max 150-word punchy masterclass. Be extremely concise. Output quickly. "
+        "Include only: 1) The core idea. 2) One key attacking plan. 3) One key defensive plan against this opening. "
+        "Use short markdown bullet points and keep the language simple."
     )
 
     try:
@@ -443,7 +442,10 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
         import streamlit as st
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
+        response = model.generate_content(
+            prompt,
+            generation_config={"max_output_tokens": 350},
+        )
         text = getattr(response, "text", None)
         if isinstance(text, str) and text.strip():
             return text.strip()
@@ -662,14 +664,17 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     except Exception:
         pass
 
-    # 2. Total Victories
-    total_victories = "0"
+    # 2. Win Percentage
+    win_percentage = "0%"
     try:
         player_games = _filter_player_games(df, username)
-        if not player_games.empty:
+        total_games = len(player_games)
+        if total_games > 0:
             is_white = player_games["white_player"].str.lower() == username.strip().lower()
             scores = _compute_results(player_games["white_result"], player_games["black_result"], is_white)
-            total_victories = str(int((scores == 1.0).sum()))
+            wins = int((scores == 1.0).sum())
+            win_pct = (wins / total_games) * 100
+            win_percentage = f"{win_pct:.1f}%"
     except Exception:
         pass
 
@@ -704,11 +709,29 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     except Exception:
         pass
 
+    # 5. GM playstyle match based on deadliest opening
+    gm_match = "Hikaru Nakamura (Fast & Unpredictable)"
+    try:
+        op_lower = str(deadliest_opening).lower()
+        if any(x in op_lower for x in ["caro", "french", "slav", "london", "petrov"]):
+            gm_match = "Anatoly Karpov (Solid & Positional)"
+        elif any(x in op_lower for x in ["sicilian", "king's gambit", "evan", "dutch", "alekhine"]):
+            gm_match = "Mikhail Tal (Aggressive Tactician)"
+        elif any(x in op_lower for x in ["ruy lopez", "queen's gambit", "english", "catalan", "reti"]):
+            gm_match = "Magnus Carlsen (Universal & Precise)"
+        elif any(x in op_lower for x in ["indian", "grunfeld", "pirc"]):
+            gm_match = "Garry Kasparov (Dynamic & Fierce)"
+        else:
+            gm_match = "Hikaru Nakamura (Fast & Unpredictable)"
+    except Exception:
+        gm_match = "Hikaru Nakamura (Fast & Unpredictable)"
+
     return {
         "top_rating": top_rating,
-        "total_victories": total_victories,
+        "win_percentage": win_percentage,
         "deadliest_opening": deadliest_opening,
-        "golden_hour": golden_hour
+        "golden_hour": golden_hour,
+        "gm_match": gm_match,
     }
 
 

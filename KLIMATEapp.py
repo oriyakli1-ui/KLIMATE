@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import io
 import re
 from typing import Optional
 
@@ -13,6 +14,7 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 import chess
 import chess.svg
+import chess.pgn
 
 import analytics
 from data_engine import ChessComAPIError, fetch_player_games
@@ -218,10 +220,11 @@ def _inject_global_styles() -> None:
             margin-bottom: 0.5rem;
         }
         .klimate-hero-subtitle {
-            font-size: 1rem;
-            color: #D1D5DB;
+            font-size: 1.2rem;
+            color: #F8FAFC;
             text-align: center;
             margin-bottom: 1.5rem;
+            font-weight: 600;
         }
 
         /* Bento cards */
@@ -233,11 +236,12 @@ def _inject_global_styles() -> None:
             box-shadow: 0 18px 40px rgba(15, 23, 42, 0.8);
         }
         .klimate-metric-label {
-            font-size: 0.9rem;
+            font-size: 1.1rem;
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            color: #D1D5DB;
+            color: #F8FAFC;
             margin-bottom: 0.3rem;
+            font-weight: 600;
         }
         .klimate-metric-value {
             font-size: 1.8rem;
@@ -252,23 +256,23 @@ def _inject_global_styles() -> None:
         }
         .klimate-metric-badge {
             display: inline-block;
-            padding: 4px 10px;
+            padding: 6px 12px;
             border-radius: 999px;
-            font-size: 0.75rem;
-            font-weight: 500;
+            font-size: 0.95rem;
+            font-weight: 600;
             margin-top: 0.4rem;
         }
         .badge-neutral {
             background: rgba(148, 163, 184, 0.16);
-            color: #E5E7EB;
+            color: #F8FAFC;
         }
         .badge-success {
             background: rgba(16, 185, 129, 0.14);
-            color: #6EE7B7;
+            color: #F8FAFC;
         }
         .badge-danger {
             background: rgba(239, 68, 68, 0.14);
-            color: #FCA5A5;
+            color: #F8FAFC;
         }
 
         /* Input styling */
@@ -369,14 +373,14 @@ def _inject_global_styles() -> None:
             margin-bottom: 2rem;
             color: #F8FAFC;
         }
-        .mp-header { color: #D1D5DB; font-size: 0.9rem; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .mp-header { color: #F8FAFC; font-size: 1.15rem; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.5rem; font-weight: 600; }
         .mp-username { 
             font-size: 2.8rem; font-weight: 800; margin: 0; 
             background: linear-gradient(90deg, #06B6D4, #10B981);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             text-transform: uppercase;
         }
-        .mp-date { color: #64748B; font-size: 0.85rem; margin-bottom: 2rem; }
+        .mp-date { color: #F8FAFC; font-size: 1.05rem; margin-bottom: 2rem; font-weight: 600; }
         .mp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; text-align: left; }
         .mp-stat-box { background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)); border-radius: 16px; padding: 1.5rem; border: 1px solid rgba(255, 255, 255, 0.08); transition: transform 0.3s ease, box-shadow 0.3s ease; }
         .mp-stat-box:hover {
@@ -385,9 +389,9 @@ def _inject_global_styles() -> None:
             border-color: rgba(6, 182, 212, 0.4);
         }
         .mp-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
-        .mp-label { color: #D1D5DB; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
+        .mp-label { color: #F8FAFC; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; font-weight: 600; }
         .mp-value { color: #FFFFFF; font-size: 1.5rem; font-weight: 800; margin-top: 0.3rem; letter-spacing: 0.02em; }
-        .mp-footer { margin-top: 2rem; font-size: 0.85rem; color: #475569; letter-spacing: 0.1em; }
+        .mp-footer { margin-top: 2rem; font-size: 1.05rem; color: #F8FAFC; letter-spacing: 0.1em; font-weight: 600; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -422,28 +426,32 @@ def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
     # The HTML for the card itself (must have id='klimate-masterpiece-card')
     card_html = f"""
     <div id="klimate-masterpiece-card" class="masterpiece-card" style="position: relative; background: radial-gradient(circle at 50% 0%, #1E293B, #020617 80%); padding: 3rem 2rem; border-radius: 24px; color: white; text-align: center; font-family: sans-serif;">
-        <div style="color: #D1D5DB; letter-spacing: 0.2em; font-size: 0.9rem; margin-bottom: 0.5rem;">KLIMATE CHESS DNA</div>
+        <div style="color: #F8FAFC; letter-spacing: 0.2em; font-size: 0.9rem; margin-bottom: 0.5rem; font-weight: 600;">KLIMATE CHESS DNA</div>
         <h1 style="font-size: 3.2rem; margin: 0; background: linear-gradient(90deg, #06B6D4, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{username.upper()}</h1>
         <div style="color: #E2E8F0; font-weight: 600; margin-top: 0.5rem; text-transform: uppercase;">{wrapped.get('player_persona', 'Tactician')}</div>
-        <div style="color: #475569; font-size: 0.8rem; margin-bottom: 2rem;">{current_date}</div>
+        <div style="color: #F8FAFC; font-size: 1.05rem; margin-bottom: 2rem; font-weight: 600;">{current_date}</div>
         
         <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(16,185,129,0.4); border-radius: 20px; padding: 2rem; margin-bottom: 1.5rem;">
             <div style="font-size: 4rem; font-weight: 900; color: #10B981;">{wrapped['top_rating']}</div>
-            <div style="color: #D1D5DB; font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase;">👑 Peak Rating</div>
+            <div style="color: #F8FAFC; font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;">👑 Peak Rating</div>
         </div>
         
-        <div style="display: flex; justify-content: space-between; gap: 10px;">
-            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
-                <div style="font-size: 0.7rem; color: #D1D5DB; text-transform: uppercase;">🏆 Victories</div>
-                <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['total_victories']}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">🏆 Win Rate</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{wrapped['win_percentage']}</div>
             </div>
-            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
-                <div style="font-size: 0.7rem; color: #D1D5DB; text-transform: uppercase;">🗡️ Best Opening</div>
-                <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['deadliest_opening']}</div>
+            <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">🗡️ Best Opening</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{wrapped['deadliest_opening']}</div>
             </div>
-            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; flex: 1;">
-                <div style="font-size: 0.7rem; color: #D1D5DB; text-transform: uppercase;">⚡ Prime Time</div>
-                <div style="font-size: 1.2rem; font-weight: bold;">{wrapped['golden_hour']}</div>
+            <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">⚡ Prime Time</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{wrapped['golden_hour']}</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">♟️ Plays Like</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: #10B981;">{wrapped['gm_match']}</div>
             </div>
         </div>
     </div>
@@ -455,9 +463,10 @@ def _render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
 
 Here are my stats as an official {wrapped.get('player_persona', 'Tactician')}:
 👑 Peak Rating: {wrapped['top_rating']}
-🏆 Total Victories: {wrapped['total_victories']}
+🏆 Win Rate: {wrapped['win_percentage']}
 🗡️ Deadliest Weapon: {wrapped['deadliest_opening']}
 ⚡ Prime Time: {wrapped['golden_hour']}
+♟️ Playstyle Match: {wrapped['gm_match']}
 
 Discover your own hidden chess psychology and strategic blindspots here: {app_url}
 
@@ -791,7 +800,7 @@ def _render_overview_page(games_df, username: str) -> None:
 
 @st.dialog("🎓 Opening Masterclass", width="large")
 def show_opening_masterclass(opening_name: str) -> None:
-    """Modal dialog: AI analysis with dynamic FEN board and YouTube link."""
+    """Modal dialog: AI analysis with game-based opening board and YouTube link."""
     st.header(opening_name)
     with st.spinner("Consulting Grandmaster AI..."):
         analysis_text = analytics.get_gemini_opening_masterclass(opening_name)
@@ -800,17 +809,33 @@ def show_opening_masterclass(opening_name: str) -> None:
         st.warning("Could not generate analysis. Please try again.")
         return
 
-    lines = analysis_text.strip().split("\n")
-    fen_line = lines[0].strip()
-    explanation = "\n".join(lines[1:]).strip()
+    explanation = analysis_text.strip()
+
+    # Try to derive a representative FEN from an actual game that used this opening
     board = chess.Board()
     try:
-        if len(fen_line.split(" ")) >= 4:
-            board.set_fen(fen_line)
-        else:
-            explanation = analysis_text
-    except ValueError:
-        explanation = analysis_text
+        games_df = st.session_state.get("games_df")
+        if isinstance(games_df, pd.DataFrame) and not games_df.empty:
+            df_open = games_df.copy()
+            opening_series = df_open.get("opening", pd.Series(index=df_open.index, dtype="object")).fillna("")
+            eco_series = df_open.get("eco", pd.Series(index=df_open.index, dtype="object")).fillna("")
+            opening_key = opening_series.where(opening_series.str.len() > 0, eco_series)
+            opening_key = opening_key.replace("", "Unknown")
+            df_open["opening_display"] = opening_key.apply(_format_opening_label)
+            match = df_open[df_open["opening_display"] == opening_name]
+            if not match.empty:
+                pgn_raw = str(match.iloc[0].get("pgn", "") or "")
+                if pgn_raw.strip():
+                    game = chess.pgn.read_game(io.StringIO(pgn_raw.strip()))
+                    if game is not None:
+                        board = game.board()
+                        for idx, move in enumerate(game.mainline_moves()):
+                            if idx >= 10:  # 8–10 plies to reach opening structure
+                                break
+                            board.push(move)
+    except Exception:
+        # Fallback to default starting board if anything fails
+        board = chess.Board()
 
     col1, col2 = st.columns([1, 1.5])
     with col1:
@@ -818,7 +843,7 @@ def show_opening_masterclass(opening_name: str) -> None:
             svg_data = chess.svg.board(board=board, size=320)
             st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
             st.write(svg_data, unsafe_allow_html=True)
-            st.caption("Standard position for this opening.")
+            st.caption("Representative position from your games with this opening.")
             st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
         except Exception:
             st.info("Board visualization unavailable.")
@@ -834,7 +859,7 @@ def show_opening_masterclass(opening_name: str) -> None:
         )
     with col2:
         st.markdown(
-            f"<div style='font-size: 1.05rem; line-height: 1.6;'>\n\n{explanation}\n</div>",
+            f"<div style='font-size: 1.15rem; font-weight: 600; line-height: 1.7;'>\n\n{explanation}\n</div>",
             unsafe_allow_html=True,
         )
 
