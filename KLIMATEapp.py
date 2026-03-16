@@ -963,40 +963,44 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     agg["LossRate"] = agg["Loss"] / agg["Total"]
     agg["DrawRate"] = agg["Draw"] / agg["Total"]
 
-    # Build the FULL openings performance table (no head() yet).
-    openings_perf = (
-        agg.reset_index()
-        .rename(columns={"opening_key": "opening_raw"})
-        .copy()
-    )
-    openings_perf["Opening"] = openings_perf["opening_raw"].apply(_format_opening_label)
+    # Build the FULL openings performance table
+    blindspots_df = agg.reset_index().rename(columns={"opening_key": "opening_raw"}).copy()
+    blindspots_df["Opening"] = blindspots_df["opening_raw"].apply(_format_opening_label)
 
-    # 1) Match with pool FIRST (on the full table)
+    # 1. Smarter Fuzzy Matcher
     def get_matching_pool_item(user_opening: object) -> dict | None:
-        user_op_lower = str(user_opening).lower()
+        if not masterclass_pool:
+            return None
+        # Clean the user opening string (e.g., 'Sicilian Defense: Najdorf' -> 'sicilian defense')
+        user_op_clean = str(user_opening).lower().split(":")[0].strip()
+
         for item in masterclass_pool:
-            name_l = str(item.get("name", "")).lower()
-            if name_l and name_l in user_op_lower:
+            pool_name_clean = str(item.get("name", "")).lower()
+            # Check if the base names match
+            if pool_name_clean and (pool_name_clean in user_op_clean or user_op_clean in pool_name_clean):
                 return item
         return None
 
-    openings_perf["pool_item"] = openings_perf["Opening"].apply(get_matching_pool_item)
+    # 2. Sort by worst performance first
+    worst_df = blindspots_df.sort_values(by="WinRate", ascending=True)
 
-    # 2) Filter: keep only openings that exist in the pool
-    valid_openings_df = openings_perf[openings_perf["pool_item"].notnull()].copy()
+    # 3. Take the Top 10 worst overall
+    top_10_worst = worst_df.head(10).copy()
 
-    if valid_openings_df.empty:
-        st.info("Play more standard openings to unlock Masterclasses.")
+    # 4. Filter this Top 10 against our masterclass pool
+    top_10_worst["pool_match"] = top_10_worst["Opening"].apply(get_matching_pool_item)
+    filtered_top_10 = top_10_worst[top_10_worst["pool_match"].notnull()].copy()
+
+    # 5. Take the Top 3 from the filtered list
+    final_display_df = filtered_top_10.head(3).copy()
+
+    if final_display_df.empty:
+        st.info(
+            "You play very unique openings! Play more standard openings to unlock deep-dive Masterclasses."
+        )
         return
 
-    # 3) Sort by worst performance (highest loss rate, then lowest win rate)
-    worst_openings_df = valid_openings_df.sort_values(
-        by=["LossRate", "WinRate"],
-        ascending=[False, True],
-    )
-
-    # 4) Take top 3 ONLY AFTER filtering + sorting
-    blindspots = worst_openings_df.head(3).copy()
+    blindspots = final_display_df
 
     st.header("Strategic Blindspots")
     st.info(
@@ -1056,13 +1060,13 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("### 🎓 Deep Dive into your Blindspots")
-    records = blindspots[["Opening", "pool_item"]].to_dict("records")
+    records = blindspots[["Opening", "pool_match"]].to_dict("records")
     num_openings = len(records)
     cols = st.columns(max(1, num_openings))
 
     for i, row in enumerate(records):
         opening_name = str(row["Opening"])
-        pool_item = row["pool_item"]
+        pool_item = row["pool_match"]
         with cols[i]:
             if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
                 # Directly show the dialog using the matched pool entry (no API calls).
