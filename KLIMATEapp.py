@@ -968,17 +968,39 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     blindspots_df["Opening"] = blindspots_df["opening_raw"].apply(_format_opening_label)
 
     # 1. Smarter Fuzzy Matcher
+    def clean_opening_name(text: object) -> str:
+        # If it's a URL, get the last part
+        t = str(text or "").split("/")[-1]
+        # Replace all non-alphanumeric characters (hyphens, apostrophes, commas) with spaces
+        t = re.sub(r"[^a-zA-Z0-9]", " ", t).lower()
+        # Remove extra whitespace
+        return " ".join(t.split())
+
     def get_matching_pool_item(user_opening: object) -> dict | None:
         if not masterclass_pool:
             return None
-        # Clean the user opening string (e.g., 'Sicilian Defense: Najdorf' -> 'sicilian defense')
-        user_op_clean = str(user_opening).lower().split(":")[0].strip()
+
+        user_clean = clean_opening_name(user_opening)
+        if not user_clean:
+            return None
 
         for item in masterclass_pool:
-            pool_name_clean = str(item.get("name", "")).lower()
-            # Check if the base names match
-            if pool_name_clean and (pool_name_clean in user_op_clean or user_op_clean in pool_name_clean):
+            pool_name = item.get("name", "")
+            pool_clean = clean_opening_name(pool_name)
+            if not pool_clean:
+                continue
+
+            # Check full exact match after cleaning
+            if pool_clean in user_clean or user_clean in pool_clean:
                 return item
+
+            # Check base match (first two words)
+            pool_words = pool_clean.split()
+            if len(pool_words) >= 2:
+                base_pool = f"{pool_words[0]} {pool_words[1]}"
+                if base_pool in user_clean:
+                    return item
+
         return None
 
     # 2. Filter the ENTIRE dataframe against our masterclass pool FIRST
