@@ -431,10 +431,9 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
         return ""
 
     prompt = (
-        f"Write a highly informative 3-bullet-point chess masterclass on the {name}. "
-        "You must write at least 100 words. Complete every sentence fully. Do not cut off mid-sentence. "
-        "Do not write an introduction or conclusion – only 3 bolded bullet points explaining the core tactical and positional ideas. "
-        "IMPORTANT: Output ONLY the 3 bullet points. No conversational filler like 'Here is your masterclass'."
+        f"Provide a detailed 3-bullet-point masterclass on the {name} opening. "
+        "Write at least 100 words. Explain key tactical and positional goals. "
+        "Finish every sentence. No intro or outro."
     )
 
     try:
@@ -446,7 +445,7 @@ def get_gemini_opening_masterclass(opening_name: str) -> str:
             response = model.generate_content(
                 prompt,
                 generation_config={"max_output_tokens": 1024},
-                request_options={"timeout": 20},
+                request_options={"timeout": 45},
             )
         except Exception:
             return "Analysis timed out. Please try again."
