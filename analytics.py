@@ -649,6 +649,63 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     }
 
 
+def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, object]) -> Dict[str, str]:
+    """
+    Extract positive metrics for the Klimate Masterpiece (Wrapped) feature.
+    """
+    # 1. Top Rating
+    top_rating = "N/A"
+    try:
+        ratings = [r for r in live_ratings.values() if isinstance(r, int)]
+        if ratings:
+            top_rating = str(max(ratings))
+    except Exception:
+        pass
+
+    # 2. Total Victories
+    total_victories = "0"
+    try:
+        player_games = _filter_player_games(df, username)
+        if not player_games.empty:
+            is_white = player_games["white_player"].str.lower() == username.strip().lower()
+            scores = _compute_results(player_games["white_result"], player_games["black_result"], is_white)
+            total_victories = str(int((scores == 1.0).sum()))
+    except Exception:
+        pass
+
+    # 3. Deadliest Opening
+    deadliest_opening = "Not enough data"
+    try:
+        openings_df = analyze_openings(df, username)
+        valid_openings = openings_df[openings_df["total_games"] >= 3]
+        if not valid_openings.empty:
+            best_op_row = valid_openings.sort_values(by="true_win_rate", ascending=False).iloc[0]
+            op_name = best_op_row["opening"]
+            win_rate = best_op_row["true_win_rate"] * 100
+            deadliest_opening = f"{op_name} ({win_rate:.0f}%)"
+    except Exception:
+        pass
+
+    # 4. Golden Hour
+    golden_hour = "Not enough data"
+    try:
+        time_df = analyze_time_of_day(df, username)
+        valid_hours = time_df[time_df["total_games"] >= 3]
+        if not valid_hours.empty:
+            best_hour_row = valid_hours.sort_values(by="true_win_rate", ascending=False).iloc[0]
+            hour_val = int(best_hour_row["hour"])
+            golden_hour = f"{hour_val:02d}:00"
+    except Exception:
+        pass
+
+    return {
+        "top_rating": top_rating,
+        "total_victories": total_victories,
+        "deadliest_opening": deadliest_opening,
+        "golden_hour": golden_hour
+    }
+
+
 def _square_to_row_col(square: int) -> Tuple[int, int]:
     """Convert chess square index (0-63) to 2D (row, col). row 0 = rank 1, col 0 = file a."""
     rank = chess.square_rank(square)  # 0 = rank 1, 7 = rank 8
