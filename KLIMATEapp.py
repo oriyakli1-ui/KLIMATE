@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import io
+import os
 import re
 import pickle
 from typing import Optional
@@ -839,35 +840,38 @@ def _render_overview_page(games_df, username: str) -> None:
 
 
 @st.dialog("🎓 Opening Masterclass", width="large")
-def show_opening_masterclass(opening_name: str) -> None:
+def show_opening_masterclass(opening_name: str, entry: dict | None = None) -> None:
     """Modal dialog: Opening Masterclass using precomputed local pool + YouTube link."""
     st.header(opening_name)
 
-    pool = _load_masterclass_pool()
-    if not pool:
-        st.warning("Masterclass data is not available yet. Please try again later.")
-        return
-
-    # Try exact match first, then substring match as fallback
-    entry = next((e for e in pool if e.get("name") == opening_name), None)
+    # If a specific pool entry was provided (from Strategic Blindspots), use it directly.
     if entry is None:
-        entry = next(
-            (
-                e
-                for e in pool
-                if opening_name.lower() in str(e.get("name", "")).lower()
-                or str(e.get("name", "")).lower() in opening_name.lower()
-            ),
-            None,
-        )
+        pool = _load_masterclass_pool()
+        if not pool:
+            st.info("Masterclass data is not available yet. Please try again later.")
+            return
 
-    if entry is None:
-        st.warning("No precomputed masterclass found for this opening.")
-        return
+        opening_lower = opening_name.lower()
+        # Exact match first, then substring match as a fallback.
+        entry = next((e for e in pool if str(e.get("name", "")).lower() == opening_lower), None)
+        if entry is None:
+            entry = next(
+                (
+                    e
+                    for e in pool
+                    if opening_lower in str(e.get("name", "")).lower()
+                    or str(e.get("name", "")).lower() in opening_lower
+                ),
+                None,
+            )
+        if entry is None:
+            # Silent failure in this rare path; Strategic Blindspots already filters strictly.
+            st.info("Masterclass data is not available yet for this opening.")
+            return
 
     explanation = str(entry.get("analysis", "") or "").strip()
     if not explanation:
-        st.warning("Masterclass text is empty for this opening.")
+        st.info("Masterclass text is not available for this opening yet.")
         return
 
     fen = str(entry.get("fen", "") or "").strip()
@@ -963,20 +967,34 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     blindspots = blindspots.reset_index().rename(columns={"opening_key": "opening_raw"})
     blindspots["Opening"] = blindspots["opening_raw"].apply(_format_opening_label)
 
-    # Filter blindspots to only those we have precomputed masterclasses for
-    masterclass_pool = _load_masterclass_pool()
+    # Load the precomputed masterclass pool and strictly filter to openings we support
+    pool_path = "masterclass_pool.pkl"
+    if os.path.exists(pool_path):
+        try:
+            with open(pool_path, "rb") as f:
+                masterclass_pool = pickle.load(f)
+        except Exception:
+            masterclass_pool = []
+    else:
+        masterclass_pool = []
+
     pool_names = [str(item.get("name", "")).lower() for item in masterclass_pool]
 
-    def _is_in_pool(opening_name: object) -> bool:
-        op_lower = str(opening_name or "").lower()
-        return any(pool_name and pool_name in op_lower for pool_name in pool_names)
+    def get_matching_pool_item(user_opening: object) -> dict | None:
+        user_op_lower = str(user_opening or "").lower()
+        for item in masterclass_pool:
+            name_l = str(item.get("name", "")).lower()
+            if name_l and name_l in user_op_lower:
+                return item
+        return None
 
-    blindspots = blindspots[blindspots["Opening"].apply(_is_in_pool)]
+    # Attach matching pool item to each blindspot row, then filter to only those with a match
+    blindspots["pool_item"] = blindspots["Opening"].apply(get_matching_pool_item)
+    blindspots = blindspots[blindspots["pool_item"].notnull()]
 
     if blindspots.empty:
         st.info(
-            "You play very unique openings! Play more standard openings like the Sicilian or Ruy Lopez "
-            "to unlock deep-dive Masterclasses."
+            "You play very unique openings! Play more standard openings to unlock deep-dive Masterclasses."
         )
         return
 
@@ -1038,33 +1056,17 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("### 🎓 Deep Dive into your Blindspots")
-    opening_names = blindspots["Opening"].astype(str).tolist()
-    num_openings = len(opening_names)
+    records = blindspots[["Opening", "pool_item"]].to_dict("records")
+    num_openings = len(records)
     cols = st.columns(max(1, num_openings))
 
-    # Map each displayed opening to the best-matching pool entry name,
-    # so the dialog always finds a precomputed masterclass.
-    def _match_pool_name(display_name: str) -> str:
-        dn = display_name.lower()
-        # Exact match first
-        for item in masterclass_pool:
-            name = str(item.get("name", ""))
-            if name.lower() == dn:
-                return name
-        # Substring / fuzzy match
-        for item in masterclass_pool:
-            name = str(item.get("name", ""))
-            nl = name.lower()
-            if nl and (nl in dn or dn in nl):
-                return name
-        # Fallback to the original display name (should rarely happen due to prior filtering)
-        return display_name
-
-    for i, opening_name in enumerate(opening_names):
-        pool_name = _match_pool_name(opening_name)
+    for i, row in enumerate(records):
+        opening_name = str(row["Opening"])
+        pool_item = row["pool_item"]
         with cols[i]:
             if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
-                show_opening_masterclass(pool_name)
+                # Pass the exact matched pool entry so the dialog always has valid FEN + analysis.
+                show_opening_masterclass(str(pool_item.get("name", opening_name)), entry=pool_item)
 
 def main() -> None:
     """Main entry point for the Klimate Streamlit app."""
