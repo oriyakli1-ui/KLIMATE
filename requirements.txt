@@ -6,3 +6,4 @@ streamlit-option-menu
 chess
 google-generativeai
 requests
+groq

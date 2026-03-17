@@ -11,6 +11,7 @@ import pandas as pd
 import requests
 import streamlit as st
 import google.generativeai as genai
+from groq import Groq
 
 from data_engine import ChessComAPIError, fetch_player_games
 
@@ -153,96 +154,41 @@ def calculate_performance_rating(df: pd.DataFrame, username: str) -> float:
     return performance
 
 
-def calculate_tilt_index(df: pd.DataFrame, username: str) -> Dict[str, float]:
-    """
-    Measure how a player's performance changes in games played immediately
-    after a loss (a simple 'tilt' index).
-
-    Steps:
-    - Compute the baseline true win rate across all games.
-    - Sort games chronologically.
-    - Identify games played immediately after a loss.
-    - Compute the true win rate on only those post-loss games.
-    - Compare the two to compute tilt_drop_percentage.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame of games as returned by `fetch_player_games`.
-    username : str
-        Chess.com username whose tilt index to compute.
-
-    Returns
-    -------
-    Dict[str, float]
-        Dictionary with keys:
-        - 'baseline_win_rate'
-        - 'post_loss_win_rate'
-        - 'tilt_drop_percentage' (negative if performance improves)
-    """
+def calculate_tilt_index(df: pd.DataFrame, username: str) -> dict:
     player_games = _filter_player_games(df, username)
     if player_games.empty:
-        return {
-            "baseline_win_rate": 0.0,
-            "post_loss_win_rate": 0.0,
-            "tilt_drop_percentage": 0.0,
-        }
+        return {"baseline_loss_rate": 0.0, "post_loss_loss_rate": 0.0, "tilt_delta": 0.0}
 
-    # Ensure chronological order
     if "date_utc" in player_games.columns:
         player_games = player_games.sort_values("date_utc", ascending=True).reset_index(drop=True)
 
     username_lc = username.strip().lower()
     is_white = player_games["white_player"].str.lower() == username_lc
-
-    scores = _compute_results(
-        series_white=player_games["white_result"],
-        series_black=player_games["black_result"],
-        is_white=is_white,
-    )
+    scores = _compute_results(player_games["white_result"], player_games["black_result"], is_white)
 
     total_games = len(scores)
     if total_games == 0:
-        return {
-            "baseline_win_rate": 0.0,
-            "post_loss_win_rate": 0.0,
-            "tilt_drop_percentage": 0.0,
-        }
+        return {"baseline_loss_rate": 0.0, "post_loss_loss_rate": 0.0, "tilt_delta": 0.0}
 
-    baseline_win_rate = float(scores.sum() / total_games)
-
-    # Identify games that are immediately after a loss
+    baseline_loss_rate = float((scores == 0.0).sum() / total_games) * 100.0
     loss_indices = scores[scores == 0.0].index
-    post_loss_indices = []
-    for idx in loss_indices:
-        next_idx = idx + 1
-        if next_idx < len(scores):
-            post_loss_indices.append(next_idx)
+    post_loss_indices = [idx + 1 for idx in loss_indices if idx + 1 < len(scores)]
 
     if not post_loss_indices:
-        # No games immediately after losses; no evidence of tilt.
         return {
-            "baseline_win_rate": baseline_win_rate,
-            "post_loss_win_rate": baseline_win_rate,
-            "tilt_drop_percentage": 0.0,
+            "baseline_loss_rate": baseline_loss_rate,
+            "post_loss_loss_rate": baseline_loss_rate,
+            "tilt_delta": 0.0,
         }
 
     post_loss_scores = scores.iloc[post_loss_indices]
-    post_loss_total = len(post_loss_scores)
-    if post_loss_total == 0:
-        post_loss_win_rate = baseline_win_rate
-    else:
-        post_loss_win_rate = float(post_loss_scores.sum() / post_loss_total)
-
-    if baseline_win_rate == 0.0:
-        tilt_drop_percentage = 0.0
-    else:
-        tilt_drop_percentage = (baseline_win_rate - post_loss_win_rate) / baseline_win_rate * 100.0
+    post_loss_loss_rate = float((post_loss_scores == 0.0).sum() / len(post_loss_scores)) * 100.0
+    tilt_delta = post_loss_loss_rate - baseline_loss_rate
 
     return {
-        "baseline_win_rate": baseline_win_rate,
-        "post_loss_win_rate": post_loss_win_rate,
-        "tilt_drop_percentage": tilt_drop_percentage,
+        "baseline_loss_rate": baseline_loss_rate,
+        "post_loss_loss_rate": post_loss_loss_rate,
+        "tilt_delta": tilt_delta,
     }
 
 
@@ -386,7 +332,30 @@ def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str, use
             return text.strip()
         return "AI Coach is currently resting. The response did not contain usable text."
     except Exception as e:
-        return "AI Coach is currently resting. Error: " + str(e)
+        msg = str(e)
+        if ("429" in msg) or ("ResourceExhausted" in msg):
+            try:
+                groq_key = st.secrets["GROQ_API_KEY"]
+                client = Groq(api_key=groq_key)
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an elite Chess Psychology Coach. Be concise, practical, and encouraging.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.4,
+                    max_tokens=220,
+                )
+                content = completion.choices[0].message.content
+                if isinstance(content, str) and content.strip():
+                    return content.strip()
+                return "AI Coach is currently resting. Groq returned an empty response."
+            except Exception as groq_exc:
+                return "AI Coach is currently resting. Error: " + str(groq_exc)
+        return "AI Coach is currently resting. Error: " + msg
 
 
 def get_gemini_opening_deep_dive(opening_name: str) -> str:

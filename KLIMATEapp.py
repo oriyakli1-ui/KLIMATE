@@ -17,9 +17,35 @@ from streamlit_option_menu import option_menu
 import chess
 import chess.svg
 import chess.pgn
+import streamlit.components.v1 as components
 
 import analytics
 from data_engine import ChessComAPIError, fetch_player_games
+
+
+# --- Google Analytics (GA4) ---
+def inject_ga() -> None:
+    GA_ID = "G-832QG3WMD9"
+    ga_js = f"""
+    <script>
+        // Inject the gtag.js script
+        var script = window.parent.document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id={GA_ID}';
+        window.parent.document.head.appendChild(script);
+
+        // Inject the configuration script
+        var script2 = window.parent.document.createElement('script');
+        script2.innerHTML = `
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){{dataLayer.push(arguments);}}
+          gtag('js', new Date());
+          gtag('config', '{GA_ID}');
+        `;
+        window.parent.document.head.appendChild(script2);
+    </script>
+    """
+    components.html(ga_js, width=0, height=0)
 
 
 # Force the masterclass pool path to be relative to this script file
@@ -721,14 +747,15 @@ def _render_cognitive_clock_chart(time_of_day_df):
         peak_hour = int(peak_row["hour"])
         peak_pct = peak_row["true_win_rate"] * 100
         st.markdown(
-            f"**Peak Performance:** Your highest win rate is at **{peak_hour:02d}:00**, "
-            f"where you win **{peak_pct:.1f}%** of your games."
+            f"**🔥 Action Plan:** Your sharpest focus is around **{peak_hour:02d}:00** ({peak_pct:.1f}% win rate). "
+            "Schedule your most important Rated games during this window."
         )
     volume_row = df.loc[df["total_games"].idxmax()]
     volume_hour = int(volume_row["hour"])
     st.markdown(
-        f"**Volume:** You play the most games at **{volume_hour:02d}:00**. "
-        "Is this when you are at your best?"
+        f"**⚠️ Energy Management:** You grind the most games at **{volume_hour:02d}:00**. "
+        "If this isn't your peak win-rate hour, you are likely playing through fatigue. "
+        "Switch to Tactics/Puzzles or Unrated games during this time to protect your Elo."
     )
 
 
@@ -763,7 +790,9 @@ def _render_overview_page(games_df, username: str) -> None:
     twr = analytics.calculate_true_win_rate(games_df, username)
     perf = analytics.calculate_performance_rating(games_df, username)
     tilt_stats = analytics.calculate_tilt_index(games_df, username)
-    tilt_drop_pct = tilt_stats.get("tilt_drop_percentage", 0.0)
+    baseline_loss_rate = float(tilt_stats.get("baseline_loss_rate", 0.0) or 0.0)
+    post_loss_loss_rate = float(tilt_stats.get("post_loss_loss_rate", 0.0) or 0.0)
+    tilt_delta = float(tilt_stats.get("tilt_delta", 0.0) or 0.0)
 
     metric_cols = st.columns(3)
     with metric_cols[0]:
@@ -797,19 +826,20 @@ def _render_overview_page(games_df, username: str) -> None:
             badge_variant="neutral",
         )
     with metric_cols[2]:
-        tilt_str = f"{tilt_drop_pct:.1f}%" if tilt_drop_pct == tilt_drop_pct else "—"
-        is_tilting = tilt_drop_pct > 0
+        tilt_str = f"{post_loss_loss_rate:.1f}%"
+        badge_text = f"{tilt_delta:+.1f}% vs baseline"
+        is_tilting = tilt_delta > 5.0
         _render_metric_card(
             title=(
-                "Tilt Index (Post-Loss Drop) "
+                "Tilt Index (Post-Loss Loss Rate) "
                 "<div class='custom-tooltip'>❔"
-                "<span class='tooltip-text'>Measures emotional resilience. Shows the percentage of times "
-                "a loss is immediately followed by another loss (Post-Loss Drop).</span>"
+                f"<span class='tooltip-text'>Your chance of losing a game immediately after a loss, "
+                f"compared to your usual loss rate of {baseline_loss_rate:.1f}%.</span>"
                 "</div>"
             ),
             value_str=tilt_str,
-            badge_text="Tilt Detected" if is_tilting else "Resilient",
-            badge_variant="danger" if is_tilting else "success",
+            badge_text=badge_text,
+            badge_variant="danger" if is_tilting else "neutral",
             value_class="klimate-metric-value--danger" if is_tilting else "",
         )
 
@@ -1029,8 +1059,8 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
 
     st.header("Strategic Blindspots")
     st.info(
-        "These are the openings where you drop the most rating points—your strategic blindspots. 👇 "
-        "**Scroll to the bottom of this page to unlock a personalized AI Masterclass and turn these weaknesses into weapons!**"
+        "These are your Elo leaks. Stop playing these openings on autopilot! 👇 "
+        "**Scroll down to unlock a personalized AI Masterclass. Learn the core plans before you try them again in Rated games.**"
     )
 
     # Horizontal stacked bar chart of Win/Loss/Draw rates
@@ -1104,6 +1134,9 @@ def main() -> None:
         page_icon="♟️",
         layout="wide",
     )
+
+    # Inject Google Analytics
+    inject_ga()
 
     _inject_global_styles()
 
@@ -1252,7 +1285,9 @@ def main() -> None:
         with tab1:
             if activity_square:
                 st.success(
-                    f"**Insight:** Your most active square for **{piece_label}** is **{activity_square}**."
+                    f"**🎯 Strategic Directive:** Your {piece_label} thrives on **{activity_square}**. "
+                    "In your next games, actively look for pawn breaks or maneuvers that help you establish "
+                    "an outpost on this exact square."
                 )
             else:
                 st.info("No activity data for this filter yet.")
@@ -1286,7 +1321,9 @@ def main() -> None:
         with tab2:
             if vulnerability_square:
                 st.warning(
-                    f"**Insight:** Watch out! You lose your **{piece_label}** most frequently on square **{vulnerability_square}**."
+                    f"**🛑 Danger Zone Alert:** You bleed material heavily on **{vulnerability_square}**. "
+                    f"Before moving your {piece_label} here, or if your opponent attacks this sector, force yourself "
+                    "to stop for 3 seconds and double-check for discovered attacks or hanging pieces."
                 )
             else:
                 st.info("No vulnerability data for this filter yet.")
