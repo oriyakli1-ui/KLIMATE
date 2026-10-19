@@ -1,239 +1,143 @@
-"""Overview and Cognitive Clock pages."""
+"""Overview and Cognitive Clock pages. Every number comes from insights.py / metrics.py."""
 from __future__ import annotations
 
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
+from plotly.subplots import make_subplots
+
 import analytics
-from ui_common import format_opening_label, render_dashboard_metric_card, render_metric_card
+import insights
+from ui_common import render_dashboard_metric_card, render_metric_card
+
+MIN_HOUR_GAMES = 10
 
 
-MIN_GAMES_FOR_WIN_RATE_LINE = 2
+def _pct(x: float) -> str:
+    return f"{x:.0%}" if x == x else "n/a"
 
 
-def render_cognitive_clock_chart(time_of_day_df):
-    """
-    Dual-axis chart: stacked bars (Wins/Draws/Losses) on primary Y-axis,
-    True Win Rate line on secondary Y-axis. Slate dark theme with unified hover.
-    """
-    if time_of_day_df.empty or time_of_day_df["total_games"].sum() == 0:
+def _tip(label: str, text: str) -> str:
+    return f"{label} <div class='custom-tooltip'>❔<span class='tooltip-text'>{text}</span></div>"
+
+
+def render_cognitive_clock_chart(profile, timezone: str) -> None:
+    """Games per hour (stacked wins/draws/losses) with the score per hour and its 95% interval."""
+    if profile.empty or profile["games"].sum() == 0:
         st.info("Not enough data to show time-of-day performance yet.")
         return
-
-    df = time_of_day_df.copy()
-    df["hour_label"] = df["hour"].apply(lambda h: f"{h:02d}:00")
-
-    # For win-rate line: only hours with enough games to avoid misleading 0% dips
-    df_line = df[df["total_games"] >= MIN_GAMES_FOR_WIN_RATE_LINE].copy()
-    df_line = df_line.sort_values("hour").reset_index(drop=True)
-
+    df = profile.copy()
+    df["label"] = df["hour"].map(lambda h: f"{h:02d}:00")
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    # Primary Y-axis: stacked bars (Wins, Draws, Losses)
-    fig.add_trace(
-        go.Bar(
-            x=df["hour_label"],
-            y=df["wins"],
-            name="Wins",
-            marker_color="#10B981",
-        ),
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=df["hour_label"],
-            y=df["draws"],
-            name="Draws",
-            marker_color="#64748B",
-        ),
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=df["hour_label"],
-            y=df["losses"],
-            name="Losses",
-            marker_color="#EF4444",
-        ),
-        secondary_y=False,
-    )
-    # Secondary Y-axis: True Win Rate line
-    if not df_line.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=df_line["hour_label"],
-                y=df_line["true_win_rate"],
-                name="True Win Rate",
-                mode="lines+markers",
-                line=dict(color="#06B6D4", width=2),
-                marker=dict(size=8, color="#06B6D4"),
-            ),
-            secondary_y=True,
-        )
-
+    for col, name, colour in (("wins", "Wins", "#10B981"), ("draws", "Draws", "#64748B"), ("losses", "Losses", "#EF4444")):
+        fig.add_trace(go.Bar(x=df["label"], y=df[col], name=name, marker_color=colour), secondary_y=False)
+    solid = df[df["games"] >= MIN_HOUR_GAMES]
+    if not solid.empty:
+        fig.add_trace(go.Scatter(
+            x=solid["label"], y=solid["score"], mode="lines+markers", name=f"Score (hours with {MIN_HOUR_GAMES}+ games)",
+            line=dict(color="#06B6D4", width=2), marker=dict(size=8),
+            error_y=dict(type="data", symmetric=False, array=solid["hi"] - solid["score"], arrayminus=solid["score"] - solid["lo"],
+                         color="rgba(6,182,212,0.45)"),
+        ), secondary_y=True)
     fig.update_layout(
-        barmode="stack",
-        hovermode="x unified",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#E5E7EB"),
-        margin=dict(l=20, r=20, t=50, b=20),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5,
-            font=dict(color="#E5E7EB"),
-        ),
+        barmode="stack", hovermode="x unified", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#E5E7EB"), margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
     )
-    fig.update_xaxes(title_text="Hour of the Day", gridcolor="rgba(148, 163, 184, 0.2)")
-    fig.update_yaxes(
-        title_text="Games (Wins / Draws / Losses)",
-        secondary_y=False,
-        gridcolor="rgba(148, 163, 184, 0.2)",
-    )
-    fig.update_yaxes(
-        title_text="True Win Rate",
-        secondary_y=True,
-        tickformat=".0%",
-        range=[0, 1.02],
-        gridcolor="rgba(148, 163, 184, 0.15)",
-    )
-
+    fig.update_xaxes(title_text=f"Hour the game started ({timezone})", gridcolor="rgba(148,163,184,0.2)")
+    fig.update_yaxes(title_text="Games", secondary_y=False, gridcolor="rgba(148,163,184,0.2)")
+    fig.update_yaxes(title_text="Score (95% interval)", secondary_y=True, tickformat=".0%", range=[0, 1.02])
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Text insights below the chart
-    df_with_games = df[df["total_games"] >= MIN_GAMES_FOR_WIN_RATE_LINE]
-    if not df_with_games.empty:
-        peak_row = df_with_games.loc[df_with_games["true_win_rate"].idxmax()]
-        peak_hour = int(peak_row["hour"])
-        peak_pct = peak_row["true_win_rate"] * 100
-        st.markdown(
-            f"**🔥 Action Plan:** Your sharpest focus is around **{peak_hour:02d}:00** ({peak_pct:.1f}% win rate). "
-            "Schedule your most important Rated games during this window."
+    best = insights.best_hour(profile, MIN_HOUR_GAMES)
+    if best:
+        st.success(
+            f"**Your best hour is {best['hour']:02d}:00**: score {best['score']:.0%} over {best['games']} games, "
+            f"versus {best['rest']:.0%} for the rest of the day. This gap is larger than chance would explain."
         )
-    volume_row = df.loc[df["total_games"].idxmax()]
-    volume_hour = int(volume_row["hour"])
-    st.markdown(
-        f"**⚠️ Energy Management:** You grind the most games at **{volume_hour:02d}:00**. "
-        "If this isn't your peak win-rate hour, you are likely playing through fatigue. "
-        "Switch to Tactics/Puzzles or Unrated games during this time to protect your Elo."
-    )
+    else:
+        st.info(
+            f"**No reliable time-of-day effect.** With {int(profile['games'].sum())} games, no hour stands out from the rest "
+            "by more than chance (hours with fewer than 10 games are not judged, and picking the best of 24 hours needs strong evidence)."
+        )
+    busiest = profile.loc[profile["games"].idxmax()]
+    st.caption(f"You start the most games around {int(busiest['hour']):02d}:00 ({int(busiest['games'])} games).")
 
 
-def render_overview_page(games_df, username: str) -> None:
-    """Overview Dashboard: live stats + metrics + Opening DNA chart."""
-    username_lc = username.strip().lower()
-    df_user = games_df.copy()
-    is_white = df_user["white_player"].astype(str).str.lower() == username_lc
-    df_user["user_rating"] = np.where(is_white, df_user["white_rating"], df_user["black_rating"])
-    df_user["user_result"] = np.where(is_white, df_user["white_result"], df_user["black_result"])
+def render_overview_page(g, username: str) -> None:
+    """Overview: live ratings, streak, score, performance rating, tilt and openings (``g`` = enriched games)."""
+    ratings = analytics.get_real_time_ratings(username)
+    kind, n = insights.current_streak(g)
+    streak = "➖ 0" if kind == "none" else (f"🔥 {n} Wins" if kind == "win" else f"🧊 {n} Losses")
 
-    live_ratings = analytics.get_real_time_ratings(username)
-    _, streak = analytics.get_current_profile_stats(df_user)
-
-    # Spacer to avoid top clipping under header
     st.markdown("<div style='margin-top: 2.5rem;'></div>", unsafe_allow_html=True)
-
-    # Live ratings + streak row
-    metric_cols = st.columns(4)
-    with metric_cols[0]:
-        render_dashboard_metric_card(title="Rapid Rating", value_str=str(live_ratings.get("rapid", "N/A")))
-    with metric_cols[1]:
-        render_dashboard_metric_card(title="Blitz Rating", value_str=str(live_ratings.get("blitz", "N/A")))
-    with metric_cols[2]:
-        render_dashboard_metric_card(title="Bullet Rating", value_str=str(live_ratings.get("bullet", "N/A")))
-    with metric_cols[3]:
-        render_dashboard_metric_card(title="Current Streak", value_str=streak)
-
+    cols = st.columns(4)
+    for col, (title, val) in zip(cols, (("Rapid Rating", ratings["rapid"]), ("Blitz Rating", ratings["blitz"]),
+                                        ("Bullet Rating", ratings["bullet"]), ("Current Streak", streak))):
+        with col:
+            render_dashboard_metric_card(title=title, value_str=str(val))
     st.divider()
 
-    # Aggregate performance metrics
-    twr = analytics.calculate_true_win_rate(games_df, username)
-    perf = analytics.calculate_performance_rating(games_df, username)
-    tilt_stats = analytics.calculate_tilt_index(games_df, username)
-    baseline_loss_rate = float(tilt_stats.get("baseline_loss_rate", 0.0) or 0.0)
-    post_loss_loss_rate = float(tilt_stats.get("post_loss_loss_rate", 0.0) or 0.0)
-    tilt_delta = float(tilt_stats.get("tilt_delta", 0.0) or 0.0)
+    summ = insights.overall_summary(g)
+    perf = insights.performance_summary(g)
+    tilt = insights.tilt_summary(g)
 
-    metric_cols = st.columns(3)
-    with metric_cols[0]:
-        twr_pct_str = f"{twr * 100:.1f}%" if twr == twr else "—"
-        twr_good = twr >= 0.5 if twr == twr else False
+    c1, c2, c3 = st.columns(3)
+    with c1:
         render_metric_card(
-            title=(
-                "True Win Rate "
-                "<div class='custom-tooltip'>❔"
-                "<span class='tooltip-text'>Measures your decisive win percentage, excluding draws. "
-                "Helps identify if your playstyle is sharp and effective.</span>"
-                "</div>"
-            ),
-            value_str=twr_pct_str,
-            badge_text="Healthy" if twr_good else "Growth Edge",
-            badge_variant="success" if twr_good else "neutral",
-            value_class="klimate-metric-value--success" if twr_good else "",
+            title=_tip("Score", "Wins plus half of draws, divided by games. The range is a 95% interval: with this many games "
+                                "the true value is very likely inside it."),
+            value_str=_pct(summ["score"]),
+            badge_text=f"{summ['wins']}W {summ['draws']}D {summ['losses']}L · ±{(summ['score_hi'] - summ['score_lo']) / 2:.0%}" if summ["n"] > 1 else None,
         )
-    with metric_cols[1]:
-        perf_str = f"{perf:.0f}" if perf == perf else "—"
+    with c2:
+        val = f"{perf['rating']:.0f}" if perf["rating"] == perf["rating"] else "—"
+        badge = (f"{perf['time_class']} · {perf['n']} rated games · opp avg {perf['avg_opponent']:.0f}" if perf["rating"] == perf["rating"]
+                 else f"needs 20+ rated {perf['time_class'] or 'games'} (have {perf['n']})")
         render_metric_card(
-            title=(
-                "Performance Rating "
-                "<div class='custom-tooltip'>❔"
-                "<span class='tooltip-text'>Your effective Elo in this specific dataset. "
-                "Calculated based on your opponents ratings and your success rate against them.</span>"
-                "</div>"
-            ),
-            value_str=perf_str,
-            badge_text="On the Rise" if perf == perf else "Need More Data",
-            badge_variant="neutral",
+            title=_tip("Performance Rating", "The rating at which your results would be exactly average against your opponents "
+                                             "(Elo formula, rated games of your most-played time control only; time controls are never mixed)."),
+            value_str=val, badge_text=badge,
         )
-    with metric_cols[2]:
-        tilt_str = f"{post_loss_loss_rate:.1f}%"
-        badge_text = f"{tilt_delta:+.1f}% vs baseline"
-        is_tilting = tilt_delta > 5.0
+    with c3:
+        if tilt["enough"]:
+            value = f"{tilt['loss_after']:.0%}"
+            badge = f"vs {tilt['loss_other']:.0%} otherwise · " + ("significant" if tilt["significant"] else "not significant")
+        else:
+            value, badge = "—", f"needs 20+ games after a loss (have {tilt['n_after']})"
         render_metric_card(
-            title=(
-                "Tilt Index (Post-Loss Loss Rate) "
-                "<div class='custom-tooltip'>❔"
-                f"<span class='tooltip-text'>Your chance of losing a game immediately after a loss, "
-                f"compared to your usual loss rate of {baseline_loss_rate:.1f}%.</span>"
-                "</div>"
-            ),
-            value_str=tilt_str,
-            badge_text=badge_text,
-            badge_variant="danger" if is_tilting else "neutral",
-            value_class="klimate-metric-value--danger" if is_tilting else "",
+            title=_tip("Loss rate right after a loss", "How often you lose the game that follows a loss in the same session, compared with "
+                                                       "games that do not follow a loss. 'Significant' means the difference is larger than chance explains."),
+            value_str=value, badge_text=badge, badge_variant="danger" if tilt["significant"] else "neutral",
+            value_class="klimate-metric-value--danger" if tilt["significant"] else "",
         )
+    if perf["mixed_classes"]:
+        st.caption(f"Performance rating covers {perf['time_class']} only; your other time controls are not mixed in.")
+    if summ["n"]:
+        opp_left = int((g["opp_result"] == "abandoned").sum())
+        you_left = int((g["user_result"] == "abandoned").sum())
+        if opp_left or you_left:
+            st.caption(f"Results include {opp_left} wins because the opponent abandoned and {you_left} losses by abandonment, as Chess.com records them.")
+        st.caption(f"Win rate (wins only): {summ['win_rate']:.1%} (95% interval {summ['win_lo']:.0%} to {summ['win_hi']:.0%}) over {summ['n']} games.")
 
     st.markdown("")
     st.markdown("### Opening DNA")
-    openings_df = analytics.analyze_openings(games_df, username)
-    if openings_df.empty:
+    ops = insights.opening_summary(g)
+    if ops.empty:
         st.info("Not enough data to analyze openings yet.")
         return
-    openings_df = openings_df.copy()
-    openings_df["opening_clean"] = openings_df["opening"].apply(format_opening_label)
-    top_openings = openings_df.head(10)
-    fig = px.bar(
-        top_openings,
-        x="opening_clean",
-        y="total_games",
-        color="true_win_rate",
-        color_continuous_scale=["#0EA5E9", "#22C55E"],
-        labels={"opening_clean": "Opening", "total_games": "Total Games"},
-    )
-    fig.update_layout(
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#E5E7EB"),
-        margin=dict(l=20, r=20, t=30, b=20),
-        coloraxis_colorbar=dict(title="True Win Rate", tickformat=".0%"),
-    )
-    fig.update_yaxes(gridcolor="rgba(148, 163, 184, 0.25)")
+    top = ops.head(10)
+    fig = px.bar(top, x="opening", y="games", color="score", color_continuous_scale=["#0EA5E9", "#22C55E"],
+                 labels={"opening": "Opening", "games": "Games", "score": "Score"}, custom_data=["lo", "hi"])
+    fig.update_traces(hovertemplate="%{x}<br>%{y} games<br>score %{marker.color:.0%} (95%: %{customdata[0]:.0%} to %{customdata[1]:.0%})<extra></extra>")
+    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E5E7EB"),
+                      margin=dict(l=20, r=20, t=30, b=20), coloraxis_colorbar=dict(title="Score", tickformat=".0%"))
+    fig.update_yaxes(gridcolor="rgba(148,163,184,0.25)")
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
+    unk = int((g["opening"] == "Unknown").sum()) if "opening" in g.columns else 0
+    if unk:
+        st.caption(f"{unk} games have no opening name from Chess.com and are not shown here.")

@@ -180,3 +180,39 @@ def error_patterns(all_moves: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     if not types.empty:
         types["share"] = types["count"] / types["count"].sum()
     return {"phase": phase, "types": types}
+
+
+def key_moments(eval_df: pd.DataFrame, pgn: str, username: str, top: int = 5) -> list:
+    """The player's biggest mistakes/blunders (by win chance given away), with what to show on the board.
+
+    Each item: ply, move_number, san, label, win_loss, error_type, fen (position BEFORE the move),
+    played_uci, best_uci (the engine's choice in that position) and best_san.
+    """
+    moves = classify_game(eval_df, pgn, username)
+    if moves.empty:
+        return []
+    bad = moves[moves["label"].isin(["mistake", "blunder"])].sort_values("win_loss", ascending=False).head(top)
+    if bad.empty:
+        return []
+    game = chess.pgn.read_game(io.StringIO(pgn))
+    by_ply = {int(r.ply): str(r.best_move or "") for r in eval_df.itertuples()}
+    wanted = {int(p) for p in bad["ply"]}
+    info = {}
+    board = game.board()
+    for ply, move in enumerate(game.mainline_moves(), start=1):
+        if ply in wanted:
+            best_uci = by_ply.get(ply - 1, "")
+            try:
+                best_san = board.san(chess.Move.from_uci(best_uci)) if best_uci else ""
+            except Exception:  # noqa: BLE001 - engine move not legal here (should not happen)
+                best_uci, best_san = "", ""
+            info[ply] = {"fen": board.fen(), "played_uci": move.uci(), "best_uci": best_uci, "best_san": best_san}
+        board.push(move)
+    out = []
+    for r in bad.itertuples():
+        d = info.get(int(r.ply))
+        if d:
+            out.append({"ply": int(r.ply), "move_number": (int(r.ply) + 1) // 2, "san": r.move_san, "label": r.label,
+                        "win_loss": float(r.win_loss), "error_type": r.error_type, **d})
+    return out
+

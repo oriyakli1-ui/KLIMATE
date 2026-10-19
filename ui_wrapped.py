@@ -2,47 +2,52 @@
 from __future__ import annotations
 
 import datetime
+import html
+import json
+
 import streamlit as st
+import streamlit.components.v1 as components
+
 import analytics
 import share_card
+import wrapped as wrapped_data
 from ga import queue_event
 
 
-def render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
+def render_wrapped_card(username: str, ratings: dict, enriched, raw_games, timezone: str) -> None:
     current_date = datetime.datetime.now().strftime("%B %d, %Y")
-    wrapped = analytics.get_wrapped_data(games_df, username, live_ratings)
-
-    import json
+    wrapped = wrapped_data.build_wrapped(enriched, raw_games, username, ratings, timezone)
+    safe = {k: html.escape(str(v)) for k, v in wrapped.items()}
+    user_html = html.escape(username.upper())
 
     # The HTML for the card itself (must have id='klimate-masterpiece-card')
     card_html = f"""
     <div id="klimate-masterpiece-card" class="masterpiece-card" style="position: relative; background: radial-gradient(circle at 50% 0%, #1E293B, #020617 80%); padding: 3rem 2rem; border-radius: 24px; color: white; text-align: center; font-family: sans-serif;">
         <div style="color: #F8FAFC; letter-spacing: 0.2em; font-size: 0.9rem; margin-bottom: 0.5rem; font-weight: 600;">KLIMATE CHESS DNA</div>
-        <h1 style="font-size: 3.2rem; margin: 0; background: linear-gradient(90deg, #06B6D4, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{username.upper()}</h1>
-        <div style="color: #E2E8F0; font-weight: 600; margin-top: 0.5rem; text-transform: uppercase;">{wrapped.get('player_persona', 'Tactician')}</div>
+        <h1 style="font-size: 3.2rem; margin: 0; background: linear-gradient(90deg, #06B6D4, #10B981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{user_html}</h1>
         <div style="color: #F8FAFC; font-size: 1.05rem; margin-bottom: 2rem; font-weight: 600;">{current_date}</div>
         
         <div style="background: rgba(15,23,42,0.6); border: 1px solid rgba(16,185,129,0.4); border-radius: 20px; padding: 2rem; margin-bottom: 1.5rem;">
-            <div style="font-size: 4rem; font-weight: 900; color: #10B981;">{wrapped['top_rating']}</div>
-            <div style="color: #F8FAFC; font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;">👑 Peak Rating</div>
+            <div style="font-size: 4rem; font-weight: 900; color: #10B981;">{safe['peak_rating']}</div>
+            <div style="color: #F8FAFC; font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;">👑 {safe['peak_label']}</div>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">🏆 Win Rate</div>
-                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{wrapped['win_percentage']}</div>
+                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">🏆 Wins</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{safe['wins']}</div>
             </div>
             <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
                 <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">🗡️ Best Opening</div>
-                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{wrapped['deadliest_opening']}</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{safe['best_opening']}</div>
             </div>
             <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
                 <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">⚡ Prime Time</div>
-                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{wrapped['golden_hour']}</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: white;">{safe['prime_time']}</div>
             </div>
             <div style="background: rgba(255,255,255,0.05); padding: 1.2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">♟️ Plays Like</div>
-                <div style="font-size: 1.3rem; font-weight: 800; color: #10B981;">{wrapped['gm_match']}</div>
+                <div style="font-size: 0.8rem; color: #F8FAFC; text-transform: uppercase; font-weight: 600; margin-bottom: 0.3rem;">♟️ Plays Like (for fun)</div>
+                <div style="font-size: 1.3rem; font-weight: 800; color: #10B981;">{safe['gm_match']}</div>
             </div>
         </div>
     </div>
@@ -50,21 +55,19 @@ def render_wrapped_card(username: str, live_ratings: dict, games_df) -> None:
 
     # 1. Define the viral text
     app_url = "https://klimate.streamlit.app/" 
-    share_text = f"""🚀 I just analyzed my Chess DNA with Klimate.AI! 
+    share_text = f"""🚀 I just analyzed my Chess DNA with Klimate!
 
-Here are my stats as an official {wrapped.get('player_persona', 'Tactician')}:
-👑 Peak Rating: {wrapped['top_rating']}
-🏆 Win Rate: {wrapped['win_percentage']}
-🗡️ Deadliest Weapon: {wrapped['deadliest_opening']}
-⚡ Prime Time: {wrapped['golden_hour']}
-♟️ Playstyle Match: {wrapped['gm_match']}
+👑 {wrapped['peak_label']}: {wrapped['peak_rating']}
+🏆 Wins: {wrapped['wins']}
+🗡️ Best opening: {wrapped['best_opening']}
+⚡ Prime time: {wrapped['prime_time']}
+♟️ Plays like (for fun): {wrapped['gm_match']}
 
-Discover your own hidden chess psychology and strategic blindspots here: {app_url}
+Discover your own chess psychology and blind spots: {app_url}
 
-#Klimate #Chess #DataScience #AI #ProductAnalytics
+#Klimate #Chess
 """
 
-    import json
     js_share_text = json.dumps(share_text)
 
     # 2. The Copy & Open Script
@@ -107,7 +110,6 @@ Discover your own hidden chess psychology and strategic blindspots here: {app_ur
     """
 
     # Render everything using components.html to ensure JS context is whole
-    import streamlit.components.v1 as components
     components.html(card_html + share_script, height=750, scrolling=True)
 
     st.download_button(
@@ -120,6 +122,5 @@ Discover your own hidden chess psychology and strategic blindspots here: {app_ur
 
 
 @st.dialog("Your Chess DNA", width="large")
-def show_klimate_masterpiece(username: str, games_df) -> None:
-    live_ratings = analytics.get_real_time_ratings(username)
-    render_wrapped_card(username, live_ratings, games_df)
+def show_klimate_masterpiece(username: str, enriched, raw_games, timezone: str) -> None:
+    render_wrapped_card(username, analytics.get_real_time_ratings(username), enriched, raw_games, timezone)

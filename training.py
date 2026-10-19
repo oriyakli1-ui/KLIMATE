@@ -5,6 +5,9 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+import insights
+from metrics import significantly_different
+
 LICHESS_THEME = "https://lichess.org/training/"
 LICHESS_OPENING = "https://lichess.org/opening/"
 
@@ -17,14 +20,14 @@ _TYPE_PLAN = {
 _PHASE_LINK = {"opening": LICHESS_THEME + "opening", "middlegame": LICHESS_THEME + "middlegame", "endgame": LICHESS_THEME + "endgame"}
 
 
-def weak_openings(g: pd.DataFrame, min_games: int = 5, top: int = 2) -> pd.DataFrame:
-    """Lowest-scoring opening families with enough games (from the enriched frame)."""
-    if g is None or g.empty or "opening" not in g.columns:
+def weak_openings(g: pd.DataFrame, min_games: int = 8, top: int = 2) -> pd.DataFrame:
+    """Opening families that score significantly below the player's own average (needs `min_games` each)."""
+    ops = insights.opening_summary(g, min_games)
+    if ops.empty or g.empty:
         return pd.DataFrame()
-    d = g[g["opening"].astype(str).str.len() > 0]
-    agg = d.groupby("opening").agg(games=("score", "size"), score=("score", "mean")).reset_index()
-    agg = agg[agg["games"] >= min_games].sort_values("score")
-    return agg.head(top)
+    base, n_all = float(g["score"].mean()), len(g)
+    bad = ops[[s < base and significantly_different(int(n), float(s), n_all, base) for n, s in zip(ops["games"], ops["score"])]]
+    return bad.sort_values("score").head(top)[["opening", "games", "score"]]
 
 
 def build_plan(

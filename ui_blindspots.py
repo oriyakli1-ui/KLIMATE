@@ -5,15 +5,15 @@ import json
 from pathlib import Path
 
 import re
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import chess
 import chess.svg
 import chess.pgn
+import insights
 from ga import queue_event
-from ui_common import format_opening_label
+from metrics import significantly_different
 
 
 POOL_PATH = Path(__file__).parent / "masterclass_pool.json"
@@ -41,21 +41,8 @@ def show_opening_masterclass(opening_name: str, entry: dict | None = None) -> No
             st.info("Masterclass data is not available yet. Please try again later.")
             return
 
-        opening_lower = opening_name.lower()
-        # Exact match first, then substring match as a fallback.
-        entry = next((e for e in load_masterclass_pool() if str(e.get("name", "")).lower() == opening_lower), None)
+        entry = match_pool(opening_name)
         if entry is None:
-            entry = next(
-                (
-                    e
-                    for e in load_masterclass_pool()
-                    if opening_lower in str(e.get("name", "")).lower()
-                    or str(e.get("name", "")).lower() in opening_lower
-                ),
-                None,
-            )
-        if entry is None:
-            # Silent failure in this rare path; Strategic Blindspots already filters strictly.
             st.info("Masterclass data is not available yet for this opening.")
             return
 
@@ -76,7 +63,7 @@ def show_opening_masterclass(opening_name: str, entry: dict | None = None) -> No
             svg_data = chess.svg.board(board=board, size=320)
             st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
             st.write(svg_data, unsafe_allow_html=True)
-            st.caption("Representative position from your games with this opening.")
+            st.caption("A typical position in this opening (not taken from your games).")
             st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
         except Exception:
             st.info("Board visualization unavailable.")
@@ -98,190 +85,85 @@ def show_opening_masterclass(opening_name: str, entry: dict | None = None) -> No
         st.divider()
 
 
-def render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
-    """Analyze openings where the user statistically struggles the most."""
-    username_lc = username.strip().lower()
-    df = games_df.copy()
-    if df.empty:
-        st.info("No games loaded yet.")
-        return
+def _norm(name: object) -> str:
+    """Lower-case letters/digits only, parenthesised extras removed ('Ruy Lopez (Spanish Opening)' -> 'ruylopez')."""
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"\(.*?\)", "", str(name or "")).lower())
 
-    is_white = df["white_player"].astype(str).str.lower() == username_lc
-    df["user_result_raw"] = np.where(is_white, df["white_result"], df["black_result"])
 
-    loss_results = {"checkmated", "timeout", "resigned", "abandoned", "lose", "loss"}
-
-    def _outcome(res: object) -> str:
-        r = str(res or "").strip().lower()
-        if r == "win":
-            return "Win"
-        if r in loss_results:
-            return "Loss"
-        return "Draw"
-
-    df["user_outcome"] = df["user_result_raw"].map(_outcome)
-
-    # Opening key similar to analyze_openings: prefer 'opening', fallback 'eco'
-    opening_series = df.get("opening", pd.Series(index=df.index, dtype="object")).fillna("")
-    eco_series = df.get("eco", pd.Series(index=df.index, dtype="object")).fillna("")
-    opening_key = opening_series.where(opening_series.str.len() > 0, eco_series)
-    opening_key = opening_key.replace("", "Unknown")
-    df["opening_key"] = opening_key
-    df = df[df["opening_key"] != "Unknown"]
-
-    # Aggregate results per opening
-    agg = (
-        df.groupby(["opening_key", "user_outcome"])
-        .size()
-        .unstack(fill_value=0)
-    )
-    agg["Total"] = agg.sum(axis=1)
-    # Filter to openings seen at least 3 times
-    agg = agg[agg["Total"] >= 3]
-    if agg.empty:
-        st.info("Not enough opening data yet to identify strategic blindspots.")
-        return
-
-    # Ensure all columns exist
-    for col in ["Win", "Loss", "Draw"]:
-        if col not in agg.columns:
-            agg[col] = 0
-
-    agg["WinRate"] = agg["Win"] / agg["Total"]
-    agg["LossRate"] = agg["Loss"] / agg["Total"]
-    agg["DrawRate"] = agg["Draw"] / agg["Total"]
-
-    # Build the FULL openings performance table
-    blindspots_df = agg.reset_index().rename(columns={"opening_key": "opening_raw"}).copy()
-    blindspots_df["Opening"] = blindspots_df["opening_raw"].apply(format_opening_label)
-
-    # 1. Smarter Fuzzy Matcher
-    def clean_opening_name(text: object) -> str:
-        # If it's a URL, get the last part
-        t = str(text or "").split("/")[-1]
-        # Replace all non-alphanumeric characters (hyphens, apostrophes, commas) with spaces
-        t = re.sub(r"[^a-zA-Z0-9]", " ", t).lower()
-        # Remove extra whitespace
-        return " ".join(t.split())
-
-    def get_matching_pool_item(user_opening: object) -> dict | None:
-        if not load_masterclass_pool():
-            return None
-
-        user_clean = clean_opening_name(user_opening)
-        if not user_clean:
-            return None
-
-        for item in load_masterclass_pool():
-            pool_name = item.get("name", "")
-            pool_clean = clean_opening_name(pool_name)
-            if not pool_clean:
-                continue
-
-            # Check full exact match after cleaning
-            if pool_clean in user_clean or user_clean in pool_clean:
-                return item
-
-            # Check base match (first two words)
-            pool_words = pool_clean.split()
-            if len(pool_words) >= 2:
-                base_pool = f"{pool_words[0]} {pool_words[1]}"
-                if base_pool in user_clean:
-                    return item
-
+def match_pool(opening: object) -> dict | None:
+    """The masterclass for an opening family: exact name match only (no fuzzy guessing)."""
+    key = _norm(opening)
+    if not key:
         return None
+    return next((e for e in load_masterclass_pool() if _norm(e.get("name")) == key), None)
 
-    # 2. Filter the ENTIRE dataframe against our masterclass pool FIRST
-    blindspots_df["pool_match"] = blindspots_df["Opening"].apply(get_matching_pool_item)
-    matched_openings_df = blindspots_df[blindspots_df["pool_match"].notnull()].copy()
 
-    if matched_openings_df.empty:
-        st.info(
-            "You play very unique openings! Play more standard openings to unlock deep-dive Masterclasses."
-        )
-        return
+MIN_OPENING_GAMES = 8
 
-    # 3. Sort ONLY the matched openings by worst performance (ascending win rate)
-    worst_matched_df = matched_openings_df.sort_values(by="WinRate", ascending=True)
 
-    # 4. Take the Top 3 from this sorted, matched list
-    final_display_df = worst_matched_df.head(3).copy()
-
-    if final_display_df.empty:
-        st.info(
-            "You play very unique openings! Play more standard openings to unlock deep-dive Masterclasses."
-        )
-        return
-
-    blindspots = final_display_df
-
+def render_strategic_blindspots(g: pd.DataFrame, username: str) -> None:
+    """Openings that score worse than the player's own average (``g`` = enriched games)."""
     st.header("Strategic Blindspots")
-    st.info(
-        "These are your Elo leaks. Stop playing these openings on autopilot! 👇 "
-        "**Scroll down to unlock a personalized AI Masterclass. Learn the core plans before you try them again in Rated games.**"
-    )
+    ops = insights.opening_summary(g, MIN_OPENING_GAMES)
+    if ops.empty or g.empty:
+        st.info(f"Not enough data: an opening needs at least {MIN_OPENING_GAMES} games to be judged.")
+        return
 
-    # Horizontal stacked bar chart of Win/Loss/Draw rates
-    openings = blindspots["Opening"]
-    win_pct = blindspots["WinRate"]
-    loss_pct = blindspots["LossRate"]
-    draw_pct = blindspots["DrawRate"]
+    n_all, base = len(g), float(g["score"].mean())
+    ops = ops.assign(
+        gap=ops["score"] - base,
+        leak=[
+            s < base and significantly_different(int(n), float(s), n_all, base)
+            for n, s in zip(ops["games"], ops["score"])
+        ],
+    ).sort_values("score")
+    leaks = ops[ops["leak"]]
+    shown = (leaks if not leaks.empty else ops).head(3)
 
+    if leaks.empty:
+        st.info(
+            f"**No opening is reliably worse than your average ({base:.0%}).** Differences between openings of "
+            f"{MIN_OPENING_GAMES}+ games are within what chance produces. Here are the lowest scoring ones so far, "
+            "with their uncertainty. Treat them as hints, not verdicts."
+        )
+    else:
+        st.info(
+            f"These openings score significantly below your average of {base:.0%}. "
+            "The bars show the result split; the table shows the 95% interval of the score."
+        )
+
+    # result split per displayed opening, from the same enriched data
+    split = {}
+    for name in shown["opening"]:
+        sub = g[g["opening"] == name]
+        split[name] = [(sub["outcome"] == k).mean() for k in ("win", "draw", "loss")]
     fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            y=openings,
-            x=win_pct,
-            name="Win",
-            orientation="h",
-            marker_color="#22C55E",
-        )
-    )
-    fig.add_trace(
-        go.Bar(
-            y=openings,
-            x=draw_pct,
-            name="Draw",
-            orientation="h",
-            marker_color="#64748B",
-        )
-    )
-    fig.add_trace(
-        go.Bar(
-            y=openings,
-            x=loss_pct,
-            name="Loss",
-            orientation="h",
-            marker_color="#EF4444",
-        )
-    )
-
+    for i, (label, colour) in enumerate((("Win", "#22C55E"), ("Draw", "#64748B"), ("Loss", "#EF4444"))):
+        fig.add_trace(go.Bar(y=[f"{n} (n={int(c)})" for n, c in zip(shown["opening"], shown["games"])],
+                             x=[split[n][i] for n in shown["opening"]], name=label, orientation="h", marker_color=colour))
     fig.update_layout(
-        barmode="stack",
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#E5E7EB"),
-        margin=dict(l=40, r=40, t=40, b=40),
-        xaxis=dict(title="Result share", tickformat=".0%"),
-        yaxis=dict(title="Opening"),
+        barmode="stack", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E5E7EB"),
+        margin=dict(l=40, r=40, t=40, b=40), xaxis=dict(title="Result share", tickformat=".0%"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
-    fig.update_layout(legend=dict(font=dict(color="#E5E7EB")))
-
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### 🎓 Deep Dive into your Blindspots")
-    records = blindspots[["Opening", "pool_match"]].to_dict("records")
-    num_openings = len(records)
-    cols = st.columns(max(1, num_openings))
+    table = shown.assign(
+        Score=shown["score"].map(lambda x: f"{x:.0%}"),
+        Interval=[f"{lo:.0%} to {hi:.0%}" for lo, hi in zip(shown["lo"], shown["hi"])],
+        Verdict=["below your average" if v else "within chance" for v in shown["leak"]],
+    )[["opening", "games", "Score", "Interval", "Verdict"]].rename(columns={"opening": "Opening", "games": "Games"})
+    st.dataframe(table, hide_index=True, width="stretch")
 
-    for i, row in enumerate(records):
-        opening_name = str(row["Opening"])
-        pool_item = row["pool_match"]
-        with cols[i]:
-            if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
-                queue_event("masterclass_opened", opening_name=str(pool_item.get("name", opening_name)))
-                # Directly show the dialog using the matched pool entry (no API calls).
-                show_opening_masterclass(str(pool_item.get("name", opening_name)), entry=pool_item)
+    st.markdown("### 🎓 Study these openings")
+    cols = st.columns(len(shown))
+    for i, (col, name) in enumerate(zip(cols, shown["opening"])):
+        entry = match_pool(name)
+        with col:
+            if entry is None:
+                st.caption(f"{name}: no masterclass available")
+            elif st.button(f"Masterclass: {name}", key=f"blindspot_btn_{i}", width="stretch"):
+                queue_event("masterclass_opened", opening_name=str(entry.get("name", name)))
+                show_opening_masterclass(str(entry.get("name", name)), entry=entry)

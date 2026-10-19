@@ -36,7 +36,7 @@ EN: Dict[str, str] = {
     # behavior lab
     "behavior_title": "🧪 Behavior Lab", "sessions": "Sessions", "games_session": "Games / session",
     "longest_session": "Longest session", "overall_score": "Overall score",
-    "session_caption": "A session = games with less than {m} minutes between them. Score = (wins + 0.5 × draws) / games.",
+    "session_caption": "A session = games where less than {m} minutes pass between one game ending and the next starting. Score = (wins + 0.5 × draws) / games.",
     "tilt_header": "Tilt: what happens after consecutive losses",
     "tilt_chart": "Score by losses in a row just before the game",
     "stop_card_title": "Your stop-loss rule: stop after {n} loss{es} in a row",
@@ -77,7 +77,7 @@ HE: Dict[str, str] = {
     "insights_caption": "תובנות מופיעות רק כשההבדל גדול ממה שמזל היה מסביר.",
     "behavior_title": "🧪 מעבדת התנהגות", "sessions": "סשנים", "games_session": "משחקים לסשן",
     "longest_session": "הסשן הארוך ביותר", "overall_score": "ציון כללי",
-    "session_caption": "סשן = משחקים עם פחות מ-{m} דקות ביניהם. ציון = (ניצחונות + 0.5 × תיקו) / משחקים.",
+    "session_caption": "סשן = משחקים שבהם עוברות פחות מ-{m} דקות מסיום משחק עד תחילת הבא. ציון = (ניצחונות + 0.5 × תיקו) / משחקים.",
     "tilt_header": "טילט: מה קורה אחרי הפסדים רצופים",
     "tilt_chart": "ציון לפי מספר ההפסדים הרצופים שלפני המשחק",
     "stop_card_title": "כלל העצירה שלך: עצור אחרי {n_he} ברצף",

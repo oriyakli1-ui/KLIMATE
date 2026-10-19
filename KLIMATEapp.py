@@ -8,7 +8,6 @@ from __future__ import annotations
 import streamlit as st
 from streamlit_option_menu import option_menu
 
-import analytics
 import insights
 import views_coach
 import views_insights
@@ -31,6 +30,16 @@ PAGES = [
 TIMEZONES = ["Asia/Jerusalem", "UTC", "Europe/London", "Europe/Paris", "America/New_York",
              "America/Los_Angeles", "Asia/Kolkata", "Asia/Tokyo"]
 COLOUR_OPTIONS = ["All", "White", "Black"]
+
+
+def _browser_timezone() -> str:
+    """The visitor's own IANA timezone (Streamlit reads it from the browser), UTC if unknown."""
+    return getattr(st.context, "timezone", None) or "UTC"
+
+
+def _timezone_options() -> list[str]:
+    mine = _browser_timezone()
+    return [mine] + [z for z in TIMEZONES if z != mine]
 
 
 def _language_picker() -> None:
@@ -97,7 +106,10 @@ def _sidebar(games_df, username: str):
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button(t("wrapped_btn"), type="primary"):
             queue_event("wrapped_generated")
-            show_klimate_masterpiece(username, games_df)
+            show_klimate_masterpiece(
+                username, st.session_state.get("enriched", games_df.iloc[0:0]), games_df,
+                st.session_state.get("cognitive_tz", _browser_timezone()),
+            )
         label = option_menu(
             menu_title="KLIMATE",
             options=list(labels),
@@ -157,16 +169,16 @@ def _dashboard() -> None:
     )
 
     if page == "overview":
-        render_overview_page(games_df, username)
+        render_overview_page(enriched_f, username)
         views_insights.render_insights_panel(enriched_f)
     elif page == "clock":
         st.markdown("### Cognitive Performance (Time of Day)")
-        tz = st.selectbox("Your timezone", TIMEZONES, index=0, key="cognitive_tz")
-        render_cognitive_clock_chart(analytics.analyze_time_of_day(games_df, username, timezone=tz))
+        tz = st.selectbox("Your timezone", _timezone_options(), index=0, key="cognitive_tz")
+        render_cognitive_clock_chart(insights.hourly_profile(enriched_f, tz), tz)
     elif page == "spatial":
         render_spatial(games_df, username)
     elif page == "blindspots":
-        render_strategic_blindspots(games_df, username)
+        render_strategic_blindspots(enriched_f, username)
     elif page == "behavior":
         views_insights.render_behavior_lab(enriched_f)
     elif page == "time":
@@ -174,7 +186,7 @@ def _dashboard() -> None:
     elif page == "coach":
         views_coach.render_coach_report(games_df, username)
     elif page == "progress":
-        views_coach.render_progress(enriched_f)
+        views_coach.render_progress(enriched_f, username)
     elif page == "plan":
         views_coach.render_training_plan(enriched_f, username)
     elif page == "compare":
