@@ -453,13 +453,18 @@ def get_current_profile_stats(df: pd.DataFrame) -> Tuple[Dict[str, object], str]
     if df is None or df.empty:
         return {"rapid": "N/A", "blitz": "N/A", "bullet": "N/A"}, "➖ 0"
 
-    df_reversed = df.iloc[::-1].reset_index(drop=True)
+    # The streak is counted from the most recent game backwards. Sort by date
+    # explicitly instead of assuming the caller's row order.
+    if "date_utc" in df.columns:
+        df_newest_first = df.sort_values("date_utc", ascending=False).reset_index(drop=True)
+    else:
+        df_newest_first = df.reset_index(drop=True)
 
     # Ratings are now obtained from the Chess.com API separately;
     # keep placeholders here for backward compatibility.
     ratings: Dict[str, object] = {"rapid": "N/A", "blitz": "N/A", "bullet": "N/A"}
 
-    if "user_result" not in df_reversed.columns:
+    if "user_result" not in df_newest_first.columns:
         return ratings, "➖ 0"
 
     loss_results = {"checkmated", "timeout", "resigned", "abandoned", "lose", "loss"}
@@ -472,7 +477,7 @@ def get_current_profile_stats(df: pd.DataFrame) -> Tuple[Dict[str, object], str]
             return "LOSS"
         return "DRAW"
 
-    outcomes = [_classify(r) for r in df_reversed["user_result"]]
+    outcomes = [_classify(r) for r in df_newest_first["user_result"]]
     if not outcomes:
         return ratings, "➖ 0"
 

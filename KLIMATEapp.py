@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import datetime
 import io
+import json
 import os
 import re
 import pickle
+import time
 from typing import Optional
 
 import numpy as np
@@ -25,27 +27,75 @@ from data_engine import ChessComAPIError, fetch_player_games
 
 # --- Google Analytics (GA4) ---
 def inject_ga() -> None:
+    if os.environ.get("KLIMATE_GA_DISABLED"):
+        # Local development: don't pollute production analytics. Events queued by
+        # `flush_ga_events` still land in window.dataLayer, so they can be inspected.
+        return
     GA_ID = "G-832QG3WMD9"
     ga_js = f"""
     <script>
-        // Inject the gtag.js script
-        var script = window.parent.document.createElement('script');
-        script.async = true;
-        script.src = 'https://www.googletagmanager.com/gtag/js?id={GA_ID}';
-        window.parent.document.head.appendChild(script);
+        // Streamlit reruns this on every interaction; inject only once per page load,
+        // otherwise every rerun adds another gtag config (duplicate page_view hits).
+        if (!window.parent.document.getElementById('klimate-ga-loader')) {{
+            // Inject the gtag.js script
+            var script = window.parent.document.createElement('script');
+            script.id = 'klimate-ga-loader';
+            script.async = true;
+            script.src = 'https://www.googletagmanager.com/gtag/js?id={GA_ID}';
+            window.parent.document.head.appendChild(script);
 
-        // Inject the configuration script
-        var script2 = window.parent.document.createElement('script');
-        script2.innerHTML = `
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){{dataLayer.push(arguments);}}
-          gtag('js', new Date());
-          gtag('config', '{GA_ID}');
-        `;
-        window.parent.document.head.appendChild(script2);
+            // Inject the configuration script
+            var script2 = window.parent.document.createElement('script');
+            script2.innerHTML = `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){{dataLayer.push(arguments);}}
+              gtag('js', new Date());
+              gtag('config', '{GA_ID}');
+            `;
+            window.parent.document.head.appendChild(script2);
+        }}
     </script>
     """
     components.html(ga_js, width=0, height=0)
+
+
+def queue_event(name: str, **params) -> None:
+    """Queue a custom GA4 event; it is sent by `flush_ga_events` (this run or the next)."""
+    st.session_state.setdefault("_ga_queue", []).append((name, params))
+
+
+def flush_ga_events() -> None:
+    """Send queued GA4 events through the parent page's gtag (fire-and-forget).
+
+    Events are queued rather than sent inline so that ones raised right before
+    ``st.rerun()`` are not lost, and each flush gets a unique nonce so Streamlit
+    re-executes the script instead of reusing an identical earlier component.
+    """
+    queue = st.session_state.get("_ga_queue")
+    if not queue:
+        return
+    st.session_state["_ga_queue"] = []
+
+    calls = "\n".join(
+        f"w.gtag('event', {json.dumps(name)}, {json.dumps(params)});" for name, params in queue
+    )
+    components.html(
+        f"""
+        <script>
+        // nonce: {time.time_ns()}
+        (function () {{
+            try {{
+                var w = window.parent;
+                w.dataLayer = w.dataLayer || [];
+                w.gtag = w.gtag || function () {{ w.dataLayer.push(arguments); }};
+                {calls}
+            }} catch (e) {{}}
+        }})();
+        </script>
+        """,
+        width=0,
+        height=0,
+    )
 
 
 # Force the masterclass pool path to be relative to this script file
@@ -558,6 +608,7 @@ Discover your own hidden chess psychology and strategic blindspots here: {app_ur
 
     <script>
     function shareToLinkedIn() {{
+        try {{ window.parent.gtag('event', 'wrapped_share_clicked'); }} catch (e) {{}}
         const tempTextArea = document.createElement("textarea");
         tempTextArea.value = {js_share_text};
         document.body.appendChild(tempTextArea);
@@ -1124,6 +1175,7 @@ def _render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
         pool_item = row["pool_match"]
         with cols[i]:
             if st.button(f"Analyze {opening_name}", key=f"blindspot_btn_{i}", width="stretch"):
+                queue_event("masterclass_opened", opening_name=str(pool_item.get("name", opening_name)))
                 # Directly show the dialog using the matched pool entry (no API calls).
                 show_opening_masterclass(str(pool_item.get("name", opening_name)), entry=pool_item)
 
@@ -1135,8 +1187,9 @@ def main() -> None:
         layout="wide",
     )
 
-    # Inject Google Analytics
+    # Inject Google Analytics (+ send events queued by a run that ended in st.rerun())
     inject_ga()
+    flush_ga_events()
 
     _inject_global_styles()
 
@@ -1162,15 +1215,20 @@ def main() -> None:
             )
             analyze_clicked = st.button("Analyze DNA", width="stretch")
 
+        if analyze_clicked:
+            queue_event("analyze_clicked", has_username=bool(username_input.strip()))
+
         if analyze_clicked and username_input.strip():
             username = username_input.strip()
             with st.spinner("Analyzing your chess DNA..."):
                 try:
                     games_df = fetch_player_games(username, max_games=100)
                 except ChessComAPIError as exc:
+                    queue_event("analysis_failed", reason="api_error")
                     st.error(f"Failed to fetch games for '{username}': {exc}")
                 else:
                     if games_df.empty:
+                        queue_event("analysis_failed", reason="no_games")
                         st.warning(
                             f"No recent games found for '{username}'. "
                             "Play a few games on Chess.com and try again."
@@ -1179,8 +1237,10 @@ def main() -> None:
                         st.session_state["games_df"] = games_df
                         st.session_state["username"] = username
                         st.session_state["data_loaded"] = True
+                        queue_event("analysis_loaded", games_count=int(len(games_df)))
                         st.rerun()
 
+        flush_ga_events()
         return
 
     # Dashboard mode: sidebar menu + main content
@@ -1191,6 +1251,7 @@ def main() -> None:
         st.image("logo.png", width="stretch")
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🎁 Generate My Klimate Masterpiece", type="primary"):
+            queue_event("wrapped_generated")
             _show_klimate_masterpiece(username, games_df)
         selection = option_menu(
             menu_title="KLIMATE",
@@ -1216,6 +1277,11 @@ def main() -> None:
                 "nav-link-selected": {"background-color": "#06B6D4", "font-weight": "bold"},
             },
         )
+
+    # Track page navigation (fires once per change, not on every rerun)
+    if st.session_state.get("_last_page") != selection:
+        st.session_state["_last_page"] = selection
+        queue_event("page_selected", page_name=selection)
 
     # Top emblem in main content area
     st.markdown(
@@ -1356,6 +1422,8 @@ def main() -> None:
 
     elif selection == "Engine Deep Dive":
         _render_engine_deep_dive(games_df, username)
+
+    flush_ga_events()
 
 
 if __name__ == "__main__":
