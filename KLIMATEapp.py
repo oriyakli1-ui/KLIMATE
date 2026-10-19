@@ -12,7 +12,7 @@ import analytics
 import insights
 import views_coach
 import views_insights
-from data_engine import ChessComAPIError, fetch_player_games
+from data_engine import ChessComAPIError, fetch_games
 from ga import flush_ga_events, inject_ga, queue_event
 from i18n import LANGS, apply_direction, t
 from ui_blindspots import render_strategic_blindspots
@@ -65,9 +65,9 @@ def _landing() -> None:
         username = username_input.strip()
         bar = st.progress(0.0, text=t("loading"))
         try:
-            games_df = fetch_player_games(
+            games_df = fetch_games(
                 username, max_games=max_games, months=months,
-                _progress=lambda done, total: bar.progress(done / total, text=t("loading")),
+                progress=lambda done, total: bar.progress(done / total, text=t("loading")),
             )
         except ChessComAPIError as exc:
             queue_event("analysis_failed", reason="api_error")
@@ -103,8 +103,9 @@ def _sidebar(games_df, username: str):
             options=list(labels),
             icons=[icon for _, icon in PAGES],
             menu_icon="cast",
-            # keep the current page when the language (and so the labels) changes
-            default_index=[key for key, _ in PAGES].index(st.session_state.get("_last_page", "overview")),
+            # Must stay constant: changing default_index between reruns remounts the component
+            # and swallows later clicks. (Switching language therefore returns to Overview.)
+            default_index=0,
             styles={
                 "container": {"padding": "0!important", "background-color": "transparent"},
                 "icon": {"color": "#06B6D4", "font-size": "18px"},
