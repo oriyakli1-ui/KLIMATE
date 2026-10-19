@@ -80,6 +80,18 @@ def inject_global_styles() -> None:
         .klimate-value-card .vc-title { color: #F8FAFC; font-weight: 700; margin: 0.3rem 0 0.2rem 0; }
         .klimate-value-card .vc-text { color: #94A3B8; font-size: 0.92rem; line-height: 1.45; }
 
+        /* Dark sidebar so labels, radios and menus are readable whatever theme the browser prefers */
+        [data-testid="stSidebar"] { background-color: #0B1220; border-right: 1px solid #1E293B; }
+        [data-testid="stSidebar"] * { color: #E5E7EB; }
+        [data-testid="stSidebar"] .stButton > button p { color: #0F172A !important; }
+        [data-testid="stSidebar"] .stDownloadButton > button { background: #1E293B; border: 1px solid #334155; }
+        [data-testid="stSidebar"] .stDownloadButton > button p { color: #E5E7EB !important; }
+        [data-testid="stSidebar"] [data-testid="stExpander"] { border: 1px solid #1E293B; border-radius: 10px; }
+
+        /* Metrics: readable values on the dark page */
+        [data-testid="stMetricValue"] { color: #F8FAFC !important; }
+        [data-testid="stMetricLabel"] p { color: #94A3B8 !important; }
+
         /* Hide Streamlit's own footer; keep the page clean */
         footer { visibility: hidden; }
         @media (max-width: 768px) {

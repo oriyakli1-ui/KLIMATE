@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 
 # group key -> (label, [(page key, bootstrap icon), ...]); labels for pages live in strings.py ("nav_<key>")
 GROUPS: List[Tuple[str, str, List[Tuple[str, str]]]] = [
-    ("home", "🏠 Home", [("overview", "house"), ("playnow", "lightning-charge")]),
+    ("home", "🏠 Home", [("overview", "house"), ("weekly", "calendar-week"), ("playnow", "lightning-charge")]),
     ("habits", "🧠 Habits", [("behavior", "activity"), ("ledger", "cash-coin"), ("time", "stopwatch"), ("clock", "clock-history")]),
     ("chess", "♟️ Chess", [("openingcheck", "book"), ("blindspots", "bullseye"), ("spatial", "grid-3x3-gap"), ("coach", "cpu"), ("engine", "motherboard")]),
     ("growth", "📈 Growth", [("progress", "graph-up"), ("plan", "calendar-check"), ("compare", "people"), ("methodology", "info-circle")]),

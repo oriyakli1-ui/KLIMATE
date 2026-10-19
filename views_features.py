@@ -12,6 +12,8 @@ import insights
 import ledger
 import opening_eval
 import readiness
+import share_card
+import weekly
 from uci import UciEngine
 from views_insights import CYAN, GREEN, GREY, RED, _card
 
@@ -221,3 +223,80 @@ def render_action_center(g: pd.DataFrame, g_full: pd.DataFrame, username: str, t
             f"<div style='color:#06B6D4;font-size:0.82rem;margin-top:0.35rem;'>Open in the sidebar: {html.escape(a['where'])}</div></div></div>",
             unsafe_allow_html=True,
         )
+
+
+# ---------------------------------------------------------------- Weekly Report
+def _delta(now_v: float, prev_v: float, fmt: str, suffix: str = "") -> str:
+    if prev_v != prev_v or now_v != now_v:
+        return "no previous week"
+    d = now_v - prev_v
+    return f"{d:{fmt}}{suffix} vs last week"
+
+
+def render_weekly(g: pd.DataFrame, username: str, timezone: str) -> None:
+    st.markdown("### 🗓️ Weekly Report")
+    if g.empty:
+        st.info("No games loaded.")
+        return
+    rep = weekly.weekly_report(g, pd.Timestamp.now(tz="UTC"))
+    cur, prev, end = rep["this"], rep["previous"], rep["anchor"]
+    start = end - 7 * weekly.DAY
+    period = f"{start.tz_convert(timezone):%b %d} - {end.tz_convert(timezone):%b %d, %Y}"
+    st.caption(f"Last 7 days of activity: {period} (compared with the 7 days before).")
+    if cur["games"] == 0:
+        st.info("No games in this period.")
+        return
+
+    c = st.columns(4)
+    c[0].metric("Games", cur["games"], f"{cur['games'] - prev['games']:+d} vs last week")
+    c[1].metric("Score", f"{cur['score']:.0%}", _delta(cur["score"] * 100, prev["score"] * 100, "+.0f", " pts"))
+    known = cur["known_changes"] >= max(1, cur["games"] // 2)
+    c[2].metric("Rating change", f"{cur['rating_change']:+.0f}" if known else "n/a",
+                _delta(cur["rating_change"], prev["rating_change"], "+.0f") if known and prev["known_changes"] else None,
+                help="Sum of the measured rating changes of games in this period.")
+    c[3].metric("Time played", f"{cur['minutes'] / 60:.1f} h", _delta(cur["minutes"] / 60, prev["minutes"] / 60, "+.1f", " h"))
+
+    daily = rep["daily"]
+    if not daily.empty:
+        fig = go.Figure(go.Bar(x=daily["day"], y=daily["rating_change"], marker_color=[GREEN if v >= 0 else RED for v in daily["rating_change"]],
+                               text=[f"{int(n)} games" for n in daily["games"]], textposition="outside", cliponaxis=False))
+        _style(fig, "Rating change per day", 320)
+        fig.update_yaxes(gridcolor="rgba(148,163,184,0.2)")
+        _plot(fig)
+
+    st.markdown("#### 🛑 Your stop-loss rule")
+    tp = insights.tilt_profile(g)
+    default = int(tp["stop_loss_after"] or 3)
+    n_rule = int(st.number_input("Stop after this many losses in a row", 1, 6, default, key="weekly_rule",
+                                 help="Defaults to your personal stop-loss when your history shows one, otherwise 3."))
+    now_part = weekly.rule_adherence(rep["games_frame"], n_rule)
+    all_part = weekly.rule_adherence(g, n_rule)
+    if now_part["reached"] == 0:
+        st.success(f"This week you never lost {n_rule} games in a row within a session, so the rule did not come up.")
+    else:
+        pct = now_part["adherence"]
+        (st.success if pct >= 0.5 else st.warning)(
+            f"This week you hit {n_rule} losses in a row in {now_part['reached']} session(s) and stopped in {now_part['stopped']} of them ({pct:.0%}).")
+    cont = all_part["continued_games"]
+    if all_part["reached"] >= 5 and len(cont) >= 10 and cont["rating_change"].notna().sum() >= 10:
+        rest = g.drop(cont.index)["rating_change"].dropna()
+        st.caption(f"Over all loaded games, the {len(cont)} games you played after {n_rule} straight losses changed your rating by "
+                   f"{cont['rating_change'].dropna().mean():+.2f} points on average, versus {rest.mean():+.2f} for all other games. "
+                   f"You stopped in {all_part['stopped']} of {all_part['reached']} sessions that reached the rule.")
+
+    st.markdown("#### Highlights")
+    games_frame = rep["games_frame"]
+    big = games_frame.groupby("session_id").size()
+    st.write(f"• Longest session: **{int(big.max())} games**.")
+    busy = daily.loc[daily["games"].idxmax()] if not daily.empty else None
+    if busy is not None:
+        st.write(f"• Busiest day: **{busy['day']:%a %b %d}** with {int(busy['games'])} games.")
+    ok = daily[daily["games"] >= 3]
+    if not ok.empty:
+        best = ok.loc[ok["score"].idxmax()]
+        st.write(f"• Best day (3+ games): **{best['day']:%a %b %d}**, score {best['score']:.0%}.")
+
+    tiles = [("Games", cur["games"], f"{cur['games'] - prev['games']:+d}"), ("Score", f"{cur['score']:.0%}", _delta(cur["score"] * 100, prev["score"] * 100, "+.0f", " pts").split(" vs")[0]),
+             ("Rating", f"{cur['rating_change']:+.0f}" if known else "n/a", ""), ("Hours played", f"{cur['minutes'] / 60:.1f}", "")]
+    st.download_button("⬇️ Download weekly card (PNG)", share_card.render_weekly_png(username, period, tiles),
+                       file_name=f"klimate-week-{username}.png", mime="image/png")
