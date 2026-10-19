@@ -22,6 +22,8 @@ import chess.pgn
 import streamlit.components.v1 as components
 
 import analytics
+import insights
+import views_insights
 from data_engine import ChessComAPIError, fetch_player_games
 
 
@@ -164,11 +166,20 @@ def _render_engine_deep_dive(games_df, username: str) -> None:
         return
 
     with st.spinner("It could take a moment, but it's worth it ⏳"):
-        eval_df = analytics.analyze_game_with_chess_api(selected_pgn, max_plies=40)
+        eval_df = analytics.analyze_game(selected_pgn)
 
     if eval_df.empty or "evaluation" not in eval_df.columns:
         st.info("No evaluation data returned for this game (yet).")
         return
+
+    engine_name = str(eval_df["source"].iloc[0]) if "source" in eval_df.columns else "engine"
+    missing = int(pd.to_numeric(eval_df["evaluation"], errors="coerce").isna().sum())
+    st.caption(f"Analyzed {len(eval_df)} half-moves with {engine_name}.")
+    if missing:
+        st.warning(
+            f"{missing} position(s) could not be evaluated (the analysis service did not answer). "
+            "They are left blank in the chart instead of guessed."
+        )
 
     # Golden Chart: area eval + blunder markers
     eval_plot = eval_df.copy()
@@ -178,8 +189,9 @@ def _render_engine_deep_dive(games_df, username: str) -> None:
     fig.add_trace(
         go.Scatter(
             x=eval_plot["ply"],
-            y=eval_plot["evaluation"].fillna(0.0),
+            y=eval_plot["evaluation"],
             mode="lines",
+            connectgaps=False,
             fill="tozeroy",
             name="Evaluation",
             line=dict(color="#06B6D4", width=2),
@@ -1213,6 +1225,9 @@ def main() -> None:
             username_input = st.text_input(
                 "Chess.com Username", placeholder="e.g. oriyakli1"
             )
+            with st.expander("History to analyze"):
+                months = st.select_slider("Months back", options=[3, 6, 12, 24], value=6)
+                max_games = st.select_slider("Max games", options=[100, 300, 500, 1000], value=500)
             analyze_clicked = st.button("Analyze DNA", width="stretch")
 
         if analyze_clicked:
@@ -1222,7 +1237,7 @@ def main() -> None:
             username = username_input.strip()
             with st.spinner("Analyzing your chess DNA..."):
                 try:
-                    games_df = fetch_player_games(username, max_games=100)
+                    games_df = fetch_player_games(username, max_games=max_games, months=months)
                 except ChessComAPIError as exc:
                     queue_event("analysis_failed", reason="api_error")
                     st.error(f"Failed to fetch games for '{username}': {exc}")
@@ -1235,6 +1250,7 @@ def main() -> None:
                         )
                     else:
                         st.session_state["games_df"] = games_df
+                        st.session_state["enriched"] = insights.enrich_games(games_df, username)
                         st.session_state["username"] = username
                         st.session_state["data_loaded"] = True
                         queue_event("analysis_loaded", games_count=int(len(games_df)))
@@ -1260,9 +1276,11 @@ def main() -> None:
                 "Cognitive Clock",
                 "Spatial Analysis",
                 "Strategic Blindspots",
+                "Behavior Lab",
+                "Time Management",
                 "Engine Deep Dive",
             ],
-            icons=["house", "clock-history", "bullseye", "bullseye", "cpu"],
+            icons=["house", "clock-history", "bullseye", "bullseye", "activity", "stopwatch", "cpu"],
             menu_icon="cast",
             default_index=0,
             styles={
@@ -1277,6 +1295,25 @@ def main() -> None:
                 "nav-link-selected": {"background-color": "#06B6D4", "font-weight": "bold"},
             },
         )
+
+        with st.expander("🎛️ Filters"):
+            available_tc = sorted(set(games_df["time_class"].dropna()) - {""})
+            time_classes = st.multiselect(
+                "Time control", available_tc, default=available_tc, key="flt_time_classes"
+            )
+            color_filter = st.radio("Colour", ["All", "White", "Black"], horizontal=True, key="flt_color")
+        st.caption(f"{len(games_df)} games loaded")
+
+    # Apply the sidebar filters to every page. ``enriched`` is computed once per load
+    # (sessions and tilt need the full timeline), then filtered like the raw games.
+    if "enriched" not in st.session_state:
+        st.session_state["enriched"] = insights.enrich_games(games_df, username)
+    enriched_f = insights.filter_enriched(st.session_state["enriched"], time_classes, color_filter)
+    games_df = insights.filter_games(games_df, username, time_classes, color_filter)
+    if games_df.empty:
+        st.warning("No games match the current filters.")
+        flush_ga_events()
+        return
 
     # Track page navigation (fires once per change, not on every rerun)
     if st.session_state.get("_last_page") != selection:
@@ -1296,10 +1333,19 @@ def main() -> None:
 
     if selection == "Overview":
         _render_overview_page(games_df, username)
+        views_insights.render_insights_panel(enriched_f)
+
+    elif selection == "Behavior Lab":
+        views_insights.render_behavior_lab(enriched_f)
+
+    elif selection == "Time Management":
+        views_insights.render_time_management(enriched_f)
 
     elif selection == "Cognitive Clock":
         st.markdown("### Cognitive Performance (Time of Day)")
-        time_of_day_df = analytics.analyze_time_of_day(games_df, username)
+        tz_options = ["Asia/Jerusalem", "UTC", "Europe/London", "Europe/Paris", "America/New_York", "America/Los_Angeles", "Asia/Kolkata", "Asia/Tokyo"]
+        tz = st.selectbox("Your timezone", tz_options, index=0, key="cognitive_tz")
+        time_of_day_df = analytics.analyze_time_of_day(games_df, username, timezone=tz)
         _render_cognitive_clock_chart(time_of_day_df)
 
     elif selection == "Spatial Analysis":

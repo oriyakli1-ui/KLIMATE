@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import io
+import os
+import shutil
 import time
 from typing import Dict, List, Tuple
 
 import chess
+import chess.engine
 import chess.pgn
 import numpy as np
 import pandas as pd
@@ -301,7 +304,31 @@ def get_real_time_ratings(username: str) -> Dict[str, object]:
     }
 
 
+_COACH_FAILURE_PREFIX = "AI Coach is currently resting"
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def _coach_explanation_cached(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
+    """Cache successful explanations only: a failure raises, so it is never stored."""
+    text = _generate_coach_explanation(fen, actual_move, best_move, user_loss)
+    if text.startswith(_COACH_FAILURE_PREFIX):
+        raise RuntimeError(text)
+    return text
+
+
 def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
+    """
+    Short AI coaching explanation for a blunder. Cached per position, because
+    Streamlit reruns the whole script on every interaction and each call is a
+    paid/rate-limited LLM request.
+    """
+    try:
+        return _coach_explanation_cached(fen, actual_move, best_move, round(float(user_loss), 2))
+    except RuntimeError as exc:
+        return str(exc)
+
+
+def _generate_coach_explanation(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
     """
     Use Gemini to generate a short coaching explanation for a specific blunder or key moment.
     """
@@ -356,89 +383,6 @@ def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str, use
             except Exception as groq_exc:
                 return "AI Coach is currently resting. Error: " + str(groq_exc)
         return "AI Coach is currently resting. Error: " + msg
-
-
-def get_gemini_opening_deep_dive(opening_name: str) -> str:
-    """
-    Use Gemini to generate a structured grandmaster-level deep dive for an opening.
-    """
-    name = str(opening_name or "").strip()
-    if not name or name.lower().startswith("choose"):
-        return ""
-
-    prompt = (
-        'You are an elite Chess Grandmaster and coach. The user wants to study the opening: '
-        f'"{name}". '
-        "Provide a comprehensive but beautifully structured analysis. Include: "
-        "1. Core Ideas & Philosophy of the opening. "
-        "2. Main Variations. "
-        "3. How to play WITH it (Attacking plans). "
-        "4. How to play AGAINST it (Defensive plans). "
-        "Format beautifully with markdown and emojis."
-    )
-
-    try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
-        text = getattr(response, "text", None)
-        if isinstance(text, str) and text.strip():
-            return text.strip()
-        return "AI Coach is currently resting. The response did not contain usable text."
-    except Exception as e:
-        return "AI Coach is currently resting. Error: " + str(e)
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_gemini_opening_masterclass(opening_name: str) -> str:
-    """
-    Use Gemini to generate a concise 3-bullet-point masterclass for an opening.
-
-    Cached for 1 hour per opening name to avoid repeated API calls.
-    """
-    name = str(opening_name or "").strip()
-    if not name or name.lower().startswith("choose"):
-        return ""
-
-    prompt = (
-        f"Explain the chess opening {name} in 3 short, bolded bullet points. "
-        "Be extremely concise. Max 80 words. Finish all sentences."
-    )
-
-    try:
-        import google.generativeai as genai
-
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel("gemini-1.5-flash")
-
-        last_error: str | None = None
-        for _ in range(2):  # retry up to 2 times
-            try:
-                response = model.generate_content(
-                    prompt,
-                    generation_config={"max_output_tokens": 1024},
-                    request_options={"timeout": 60},
-                )
-                text = getattr(response, "text", None)
-                if isinstance(text, str) and text.strip():
-                    print(f"DEBUG: Gemini Output Length: {len(text)}")
-                    return text  # full string, no slicing
-                last_error = "Empty response from model."
-            except Exception as e:  # capture timeout or other errors
-                last_error = str(e)
-                continue
-
-        # If we reach here, both attempts failed
-        return (
-            "The AI Coach is taking a long time to think. "
-            "Please click the button again or try a different opening."
-        )
-    except Exception:
-        return (
-            "The AI Coach is taking a long time to think. "
-            "Please click the button again or try a different opening."
-        )
 
 
 def get_current_profile_stats(df: pd.DataFrame) -> Tuple[Dict[str, object], str]:
@@ -569,78 +513,6 @@ def analyze_time_of_day(
     grouped = grouped.sort_values("hour").reset_index(drop=True)
 
     return grouped
-
-
-def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, object]) -> Dict[str, object]:
-    """
-    Build a Spotify-Wrapped style positive metrics summary for the given user.
-
-    Returns a dict with:
-    - top_rating
-    - total_victories
-    - deadliest_opening
-    - golden_hour
-    """
-    # Top rating
-    rating_values: List[int] = []
-    try:
-        for key in ["rapid", "blitz", "bullet"]:
-            val = (live_ratings or {}).get(key, "N/A")
-            if isinstance(val, (int, float)):
-                rating_values.append(int(val))
-    except Exception:
-        rating_values = []
-    top_rating: object = max(rating_values) if rating_values else "Not enough data"
-
-    # Victories
-    total_victories: object = "Not enough data"
-    try:
-        player_games = _filter_player_games(df, username)
-        if not player_games.empty:
-            username_lc = username.strip().lower()
-            is_white = player_games["white_player"].astype(str).str.lower() == username_lc
-            user_result = player_games["white_result"].where(is_white, player_games["black_result"])
-            total_victories = int((user_result.fillna("").astype(str).str.lower() == "win").sum())
-    except Exception:
-        total_victories = "Not enough data"
-
-    # Deadliest opening: highest true_win_rate where total_games >= 3
-    deadliest_opening: object = "Not enough data"
-    try:
-        openings_df = analyze_openings(df, username)
-        if not openings_df.empty:
-            eligible = openings_df[openings_df["total_games"] >= 3].copy()
-            if not eligible.empty:
-                best_row = eligible.sort_values(
-                    ["true_win_rate", "total_games"], ascending=[False, False]
-                ).iloc[0]
-                opening_name = str(best_row.get("opening", "Unknown"))
-                wr_pct = float(best_row.get("true_win_rate", 0.0)) * 100.0
-                deadliest_opening = {"opening": opening_name, "win_rate_pct": wr_pct}
-    except Exception:
-        deadliest_opening = "Not enough data"
-
-    # Golden hour: highest true_win_rate with minimum 3 games
-    golden_hour: object = "Not enough data"
-    try:
-        tod_df = analyze_time_of_day(df, username, timezone="Asia/Jerusalem")
-        if not tod_df.empty:
-            eligible = tod_df[tod_df["total_games"] >= 3].copy()
-            if not eligible.empty:
-                best_row = eligible.sort_values(
-                    ["true_win_rate", "total_games"], ascending=[False, False]
-                ).iloc[0]
-                hour = int(best_row.get("hour", 0))
-                golden_hour = f"{hour:02d}:00"
-    except Exception:
-        golden_hour = "Not enough data"
-
-    return {
-        "top_rating": top_rating,
-        "total_victories": total_victories,
-        "deadliest_opening": deadliest_opening,
-        "golden_hour": golden_hour,
-    }
 
 
 def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, object]) -> Dict[str, str]:
@@ -940,8 +812,10 @@ def analyze_game_with_chess_api(pgn_string: str, max_plies: int = 40) -> pd.Data
             elif data.get("cp") is not None:
                 eval_now = float(data.get("cp")) / 100.0
         except Exception:
-            eval_now = prev_eval
-            best_move = prev_best
+            # Unknown, not "same as before": copying the previous eval would draw a
+            # believable-looking but invented line. NaN is skipped by blunder detection.
+            eval_now = float("nan")
+            best_move = ""
 
         rows.append(
             {
@@ -956,6 +830,83 @@ def analyze_game_with_chess_api(pgn_string: str, max_plies: int = 40) -> pd.Data
         time.sleep(0.02)
 
     return pd.DataFrame(rows, columns=["ply", "move_san", "evaluation", "best_move"])
+
+
+def _find_stockfish() -> str | None:
+    """Path of a local Stockfish binary, or None (set STOCKFISH_PATH to override)."""
+    for cand in (
+        os.environ.get("STOCKFISH_PATH"),
+        shutil.which("stockfish"),
+        "/usr/games/stockfish",
+        "/usr/bin/stockfish",
+    ):
+        if cand and os.path.exists(cand):
+            return cand
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def analyze_game_with_stockfish(pgn_string: str, max_plies: int = 150, depth: int = 12) -> pd.DataFrame:
+    """Evaluate every position of a game with a local Stockfish (white's point of view, in pawns).
+
+    Same columns as ``analyze_game_with_chess_api``. Returns an empty frame when no
+    engine is installed or it fails to start, so callers can fall back.
+    """
+    empty = pd.DataFrame(columns=["ply", "move_san", "evaluation", "best_move"])
+    path = _find_stockfish()
+    if not path or not isinstance(pgn_string, str) or not pgn_string.strip():
+        return empty
+    try:
+        game = chess.pgn.read_game(io.StringIO(pgn_string))
+        engine = chess.engine.SimpleEngine.popen_uci(path)
+    except Exception:
+        return empty
+    if game is None:
+        engine.quit()
+        return empty
+
+    rows = []
+    try:
+        board = game.board()
+        for ply, move in enumerate(game.mainline_moves(), start=1):
+            if ply > max_plies:
+                break
+            san = board.san(move)
+            board.push(move)
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            cp = info["score"].white().score(mate_score=1000)
+            pv = info.get("pv") or []
+            rows.append(
+                {
+                    "ply": ply,
+                    "move_san": san,
+                    "evaluation": float(max(-10.0, min(10.0, cp / 100.0))),
+                    "best_move": pv[0].uci() if pv else "",
+                }
+            )
+    except Exception:
+        pass
+    finally:
+        try:
+            engine.quit()
+        except Exception:
+            pass
+    return pd.DataFrame(rows, columns=["ply", "move_san", "evaluation", "best_move"])
+
+
+def analyze_game(pgn_string: str) -> pd.DataFrame:
+    """Best available analysis: local Stockfish (full game) else the chess-api.com HTTP service.
+
+    Adds a ``source`` column so the UI can say what produced the numbers.
+    """
+    df = analyze_game_with_stockfish(pgn_string)
+    if not df.empty:
+        df = df.copy()
+        df["source"] = "Stockfish"
+        return df
+    df = analyze_game_with_chess_api(pgn_string, max_plies=40).copy()
+    df["source"] = "chess-api.com"
+    return df
 
 
 @st.cache_data(show_spinner=False)
