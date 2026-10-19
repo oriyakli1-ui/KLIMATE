@@ -71,7 +71,7 @@ def test_overview_page(monkeypatch):
     assert "Score" in text and "Performance Rating" in text
 
 
-@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck"])
+@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology"])
 def test_other_pages(which):
     def page():
         import analytics
@@ -106,6 +106,14 @@ def test_other_pages(which):
             import views_features
 
             views_features.render_play_now(g, "me", "UTC", lambda: None)
+        elif which_page == "action":
+            import views_features
+
+            views_features.render_action_center(g, g, "me", "UTC")
+        elif which_page == "methodology":
+            import views_info
+
+            views_info.render_methodology()
         elif which_page == "openingcheck":
             import numpy as np
             import opening_eval

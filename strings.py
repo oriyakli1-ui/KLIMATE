@@ -10,6 +10,7 @@ STRINGS: Dict[str, str] = {
     "nav_coach": "Coach Report", "nav_progress": "Progress", "nav_plan": "Training Plan",
     "nav_compare": "Compare", "nav_engine": "Engine Deep Dive",
     "nav_ledger": "Elo Ledger", "nav_playnow": "Play Now", "nav_openingcheck": "Opening Check",
+    "nav_methodology": "Methodology",
     # landing + sidebar
     "tagline": "Decode Your Chess DNA. Elevate Your Mental Game.", "username": "Chess.com Username",
     "username_ph": "e.g. oriyakli1", "history": "History to analyze", "months_back": "Months back",
