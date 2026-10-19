@@ -261,6 +261,8 @@ def analyze_openings(df: pd.DataFrame, username: str) -> pd.DataFrame:
         )
 
     result_df = pd.DataFrame(records)
+    # "Unknown" (openings Chess.com could not name) is not an opening: keep it out of rankings.
+    result_df = result_df[result_df["opening"] != "Unknown"]
     result_df = result_df.sort_values("total_games", ascending=False).reset_index(drop=True)
     return result_df
 
