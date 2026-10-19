@@ -3,7 +3,6 @@ import types
 
 import pandas as pd
 
-import analytics
 import data_engine
 import i18n
 import insights
@@ -22,15 +21,13 @@ def test_parse_eco_url_families():
     assert openings.parse_eco_url("") == ("", "") and openings.parse_eco_url(None) == ("", "")
 
 
-def test_streak_counts_from_the_newest_game():
-    df = pd.DataFrame({
-        "date_utc": pd.to_datetime(["2026-01-03", "2026-01-01", "2026-01-02"], utc=True),
-        "user_result": ["checkmated", "win", "win"],  # newest game is the loss
-    })
-    _, streak = analytics.get_current_profile_stats(df)
-    assert "1 Loss" in streak
-    df2 = df.assign(user_result=["win", "checkmated", "checkmated"])
-    assert "1 Win" in analytics.get_current_profile_stats(df2)[1]
+def test_streak_counts_from_the_newest_game(games_factory):
+    g = insights.enrich_games(games_factory(["win", "win", "loss", "loss", "loss"]).iloc[::-1], "me")  # newest first
+    assert insights.current_streak(g) == ("loss", 3)
+    g2 = insights.enrich_games(games_factory(["loss", "loss", "win"]), "me")
+    assert insights.current_streak(g2) == ("win", 1)
+    g3 = insights.enrich_games(games_factory(["win", "draw"]), "me")
+    assert insights.current_streak(g3) == ("none", 0)  # a draw ends the streak
 
 
 def test_parse_game_adds_new_columns():
@@ -101,7 +98,7 @@ def test_style_profile_and_match():
 def test_fetch_games_reports_progress_and_respects_months(monkeypatch, tmp_path):
     monkeypatch.setattr(data_engine, "CACHE_DIR", tmp_path)
     game = {"white": {"username": "A", "rating": 1, "result": "win"}, "black": {"username": "B", "rating": 1, "result": "resigned"},
-            "end_time": 1700000000, "pgn": "1. e4"}
+            "end_time": 1700000000, "pgn": "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6", "rules": "chess", "time_class": "rapid"}
     archives = [f"https://api.chess.com/pub/player/bob/games/2020/{m:02d}" for m in (1, 2, 3)]
 
     def fake_get(url):
@@ -123,7 +120,7 @@ def test_undefined_opening_is_not_an_opening():
 def test_unknown_opening_never_ranks(games_factory):
     df = games_factory(["win"] * 6)
     df["opening"] = "Unknown"
-    assert analytics.analyze_openings(df, "me").empty
+    assert insights.opening_summary(insights.enrich_games(df, "me")).empty
 
 
 def test_gemini_call_disables_thinking_and_rejects_truncated_answers(monkeypatch):
@@ -182,3 +179,19 @@ def test_cut_off_answers_are_rejected_and_fall_back(monkeypatch):
         pass
     else:
         raise AssertionError("two truncated answers must raise")
+
+
+def test_variants_daily_and_unplayed_games_are_excluded(monkeypatch, tmp_path):
+    monkeypatch.setattr(data_engine, "CACHE_DIR", tmp_path)
+    base = {"white": {"username": "A", "rating": 1, "result": "win"}, "black": {"username": "B", "rating": 1, "result": "resigned"},
+            "end_time": 1700000000, "rules": "chess", "time_class": "rapid", "pgn": "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6"}
+    games = [
+        base,
+        {**base, "rules": "crazyhouse"},
+        {**base, "time_class": "daily"},
+        {**base, "pgn": "1. e4"},
+    ]
+    monkeypatch.setattr(data_engine, "_safe_get", lambda url: {"archives": [".../games/2020/01"]} if url.endswith("/archives") else {"games": games})
+    df = data_engine.fetch_games("bob", 50, 1)
+    assert len(df) == 1
+    assert df.attrs["excluded"] == {"variants": 1, "daily": 1, "short": 1}

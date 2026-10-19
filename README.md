@@ -26,6 +26,9 @@ Optional: install [Stockfish](https://stockfishchess.org/) (or set `STOCKFISH_PA
 Secrets (`.streamlit/secrets.toml`, or Streamlit Cloud → Secrets) for the AI coach: `GEMINI_API_KEY`, optional `GROQ_API_KEY`.
 Set `KLIMATE_GA_DISABLED=1` to stop sending Google Analytics events during development.
 
+## Accuracy
+Every headline number is checked against the raw Chess.com data by `tools/audit_against_chesscom.py` (independent code), and statistics carry their uncertainty; see `TECHNICAL_SUMMARY.md`.
+
 ## Tests
 ```bash
 pip install -r requirements-dev.txt
@@ -37,7 +40,7 @@ pytest tests
 |---|---|
 | `KLIMATEapp.py` | entry point: routing, sidebar, filters |
 | `ui_*.py`, `views_*.py` | pages |
-| `insights.py`, `analysis.py`, `training.py`, `style.py`, `openings.py` | pure analysis code (no Streamlit) |
+| `metrics.py`, `insights.py`, `analysis.py`, `spatial.py`, `wrapped.py`, `training.py`, `style.py`, `openings.py` | pure analysis code (no Streamlit) |
 | `analytics.py`, `coach.py`, `llm.py`, `data_engine.py` | engine, LLM and Chess.com access |
 | `i18n.py`, `ga.py`, `share_card.py` | translations, Google Analytics events, PNG card |
 

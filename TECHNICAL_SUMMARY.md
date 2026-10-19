@@ -17,6 +17,13 @@ Chess.com API -> `data_engine.fetch_player_games` (DataFrame, closed months cach
 - `ga.py`: GA4 loader and event queue. Events: analyze_clicked, analysis_loaded, analysis_failed, page_selected, masterclass_opened, wrapped_generated, wrapped_downloaded, wrapped_share_clicked.
 - `i18n.py`: `t(key)` with English fallback; Hebrew switches the layout to RTL.
 
+## Accuracy rules (audited)
+- `metrics.py` is the single definition of: how a result is scored (`score_result`, uses both players' result strings), confidence intervals, Elo performance rating (solved, never mixes time controls), significance tests, linear trend.
+- Only standard-chess, non-daily games of at least 6 half-moves are analysed (`data_engine`, exclusion counts in `df.attrs["excluded"]`).
+- Sessions use idle time between one game's end and the next start (PGN StartTime/EndTime). Time of day uses the game's START hour in the visitor's timezone.
+- Anything picked as the "best of many" (best hour, best opening) is shown only with its sample size or when it clears a stricter bar.
+- `tools/audit_against_chesscom.py <user>` recomputes the headline numbers from raw API data with independent code and compares them with the app's modules. Run it after changing any metric.
+
 ## Conventions
 - New analysis goes in Streamlit-free modules so it can later move behind an API.
 - Anything that varies per rerun must be cached or queued; Streamlit reruns the whole script on every interaction.

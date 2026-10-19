@@ -92,17 +92,19 @@ def safe_generate(prompt: str, max_tokens: int = 400) -> str:
         return UNAVAILABLE_MESSAGE
 
 
-def coach_explanation(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
+def coach_explanation(fen: str, actual_move: str, best_move: str, win_loss_points: float) -> str:
+    """Explain one mistake. ``win_loss_points`` is the win chance given away, in percentage points."""
     if not fen:
         return UNAVAILABLE_MESSAGE
     prompt = (
-        f"The board position (FEN) is: {fen}. "
-        f"The player played '{actual_move}', but the best engine move was '{best_move}'. "
-        f"This mistake cost {round(float(user_loss), 2)} pawns of evaluation. "
-        "Explain the 'why' behind the mistake from a human perspective. Decide whether it looks like: "
-        "panic/defensive oversight, greed (grabbing a pawn and ignoring a threat), tunnel vision, "
-        "or impatience in a winning position. Answer in 2-3 punchy, encouraging sentences and give "
-        "one actionable tip for next time."
+        f"The board position (FEN) before the move is: {fen}. "
+        f"The player played '{actual_move}', but the engine's best move was '{best_move}'. "
+        f"The move gave away about {round(float(win_loss_points))} percentage points of winning chances. "
+        "Explain the 'why' behind the mistake from a human perspective, using only what is visible in "
+        "the position. Decide whether it looks like: panic/defensive oversight, greed (grabbing a pawn "
+        "and ignoring a threat), tunnel vision, or impatience in a winning position, and say so only if "
+        "the position supports it. Answer in 2-3 punchy, encouraging sentences and give one actionable "
+        "tip for next time."
     )
     return safe_generate(prompt, 300)
 

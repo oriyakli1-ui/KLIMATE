@@ -11,6 +11,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from metrics import count_plies
 from openings import parse_eco_url
 
 
@@ -26,6 +27,7 @@ _MONTH_RE = re.compile(r"/games/(\d{4})/(\d{2})$")
 
 COLUMNS: List[str] = [
     "date_utc",
+    "start_utc",
     "white_player",
     "black_player",
     "white_rating",
@@ -41,11 +43,27 @@ COLUMNS: List[str] = [
     "rated",
     "rules",
     "url",
+    "plies",
 ]
 
 
 class ChessComAPIError(Exception):
     """Custom exception for Chess.com API related errors."""
+
+
+_HDR = {k: re.compile(r'\[' + k + r' "([^"]*)"\]') for k in ("UTCDate", "UTCTime", "EndDate", "EndTime")}
+MIN_PLIES = 6  # shorter games (aborted / abandoned at move 1-2) are not real games
+
+
+def _pgn_timestamp(pgn: str, date_key: str, time_key: str) -> Optional[pd.Timestamp]:
+    """UTC timestamp from a pair of PGN headers (Chess.com writes them in UTC), or None."""
+    d, tm = _HDR[date_key].search(pgn or ""), _HDR[time_key].search(pgn or "")
+    if not d or not tm:
+        return None
+    try:
+        return pd.Timestamp(f"{d.group(1).replace('.', '-')} {tm.group(1)}", tz="UTC")
+    except (ValueError, TypeError):
+        return None
 
 
 def _safe_get(url: str, timeout: int = 10) -> Dict[str, Any]:
@@ -125,8 +143,13 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     time_class = game.get("time_class", "")
     pgn = game.get("pgn", "")
 
+    start = _pgn_timestamp(pgn, "UTCDate", "UTCTime")
+    end = _pgn_timestamp(pgn, "EndDate", "EndTime")
+    if end is not None:  # the header has second precision and matches the archive's end_time
+        game_date_utc = end
     return {
         "date_utc": game_date_utc,
+        "start_utc": start,
         "white_player": white.get("username", ""),
         "black_player": black.get("username", ""),
         "white_rating": white.get("rating"),
@@ -142,6 +165,7 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "rated": bool(game.get("rated", False)),
         "rules": game.get("rules", "chess"),
         "url": game.get("url", ""),
+        "plies": count_plies(pgn),
     }
 
 
@@ -263,11 +287,28 @@ def fetch_games(
 
     df = pd.DataFrame(collected_games)
 
+    # Only real standard-chess games are analysed: variants (crazyhouse, bughouse, 960...) break
+    # the PGN/opening/engine assumptions, daily games have no meaningful clocks or sessions, and
+    # games that ended within 2-3 moves are not games.
+    n_all = len(df)
+    df = df[df["rules"] == "chess"]
+    n_variants = n_all - len(df)
+    n_daily = int((df["time_class"] == "daily").sum())
+    df = df[df["time_class"] != "daily"]  # correspondence games: no clocks/sessions/time-of-day
+    n_short = int((df["plies"] < MIN_PLIES).sum())
+    df = df[df["plies"] >= MIN_PLIES]
+    excluded = {"variants": n_variants, "daily": n_daily, "short": n_short}
+    if df.empty:
+        out = pd.DataFrame(columns=COLUMNS)
+        out.attrs["excluded"] = excluded
+        return out
+
     # Normalize date column to pandas datetime; keep timezone-aware (UTC).
     df["date_utc"] = pd.to_datetime(df["date_utc"], utc=True)
 
     # Sort by date descending (most recent first).
     df = df.sort_values("date_utc", ascending=False).reset_index(drop=True)
+    df.attrs["excluded"] = excluded
 
     return df
 

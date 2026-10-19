@@ -7,11 +7,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import analysis
+import analytics
 import coach
 import insights
 import llm
 import training
 from i18n import t
+from metrics import linear_trend
 from data_engine import ChessComAPIError, fetch_player_games
 from views_insights import CYAN, GREEN, GREY, RED, _bar, _card
 
@@ -38,7 +40,8 @@ def _plot(fig: go.Figure) -> None:
 # ---------------------------------------------------------------- Coach Report
 def render_coach_report(games_df: pd.DataFrame, username: str) -> None:
     st.markdown("### " + t("coach_title"))
-    st.caption("Runs Stockfish on your recent games and finds *where* and *how* you lose points.")
+    st.caption("Runs Stockfish on your recent games and finds *where* and *how* you lose points. A move counts as an inaccuracy when it gives "
+               "away 10+ points of win chance, a mistake 20+, a blunder 30+. Accuracy is the average per-move accuracy (Lichess's formula).")
     if not coach.stockfish_available():
         st.info(
             "This page needs a local Stockfish engine, which is installed on the live site. "
@@ -107,13 +110,16 @@ def _goal_default(tc: str, current: int) -> int:
         return current + 100
 
 
-def render_progress(g: pd.DataFrame) -> None:
+def render_progress(g: pd.DataFrame, username: str) -> None:
     st.markdown("### " + t("progress_title"))
     d = g.dropna(subset=["user_rating"])
     if len(d) < 10:
         st.info("Not enough rated games yet. Load more history in the filters.")
         return
 
+    live = analytics.get_real_time_ratings(username)
+    st.caption("Each point is your rating at the start of that game (Chess.com publishes the rating before the game). "
+               "'Current' in the goals below is your live rating.")
     fig = go.Figure()
     for tc, color in zip(sorted(d["time_class"].unique()), [CYAN, GREEN, "#F59E0B", GREY]):
         s = d[d["time_class"] == tc].sort_values("date_utc")
@@ -135,18 +141,19 @@ def render_progress(g: pd.DataFrame) -> None:
         s = d[d["time_class"] == tc].sort_values("date_utc")
         if len(s) < 15:
             continue
-        current = int(s["user_rating"].iloc[-1])
+        current = int(live[tc]) if isinstance(live.get(tc), int) else int(s["user_rating"].iloc[-1])
         goal = int(st.number_input(f"{tc.title()} goal", 100, 3500, _goal_default(tc, current), step=25, key=f"goal_{tc}"))
         st.query_params[f"goal_{tc}"] = str(goal)
         st.progress(min(1.0, max(0.0, current / goal)), text=f"{tc.title()}: {current} / {goal}")
-        recent = s.tail(80)
-        slope = float(np.polyfit(np.arange(len(recent)), recent["user_rating"].to_numpy(dtype=float), 1)[0])
+        slope, se = linear_trend(s.tail(80)["user_rating"].to_numpy(dtype=float))
+        reliable = slope == slope and se == se and se > 0 and slope / se >= 2.0
         if current >= goal:
             st.success("Goal reached!")
-        elif slope > 0.05:
-            st.caption(f"At your recent trend (+{slope:.2f} rating/game) that is roughly {int((goal - current) / slope)} games away. A rough linear estimate.")
+        elif reliable and slope > 0:
+            st.caption(f"Your rating has been rising by about {slope:.2f} per game over the last {min(80, len(s))} games (a statistically "
+                       f"reliable trend), which would reach the goal in roughly {int((goal - current) / slope)} games if it continues. A rough estimate.")
         else:
-            st.caption("Your recent trend is flat or falling, so no honest estimate yet.")
+            st.caption("No statistically reliable upward trend in your recent games, so no estimate is shown.")
 
 
 # --------------------------------------------------------------- Training plan
@@ -207,6 +214,15 @@ def render_compare(my_enriched: pd.DataFrame, username: str) -> None:
         st.warning("Not enough games to compare.")
         return
 
+    def _window(x: pd.DataFrame) -> str:
+        return f"{len(x)} games, {x['date_utc'].min():%Y-%m-%d} to {x['date_utc'].max():%Y-%m-%d}"
+
+    st.caption(f"{username}: {_window(my_enriched)}  ·  {rival}: {_window(other)}")
+    span_a = (my_enriched["date_utc"].max() - my_enriched["date_utc"].min()).days + 1
+    span_b = (other["date_utc"].max() - other["date_utc"].min()).days + 1
+    if max(span_a, span_b) > 3 * max(1, min(span_a, span_b)):
+        st.warning("The two samples cover very different periods (the number of games is capped), so differences may reflect "
+                   "when the games were played, not only how the players play.")
     a, b = _summary(my_enriched), _summary(other)
     table = pd.DataFrame({"Metric": list(a.keys()), username: list(a.values()), rival: list(b.values())})
 
@@ -237,4 +253,4 @@ def render_compare(my_enriched: pd.DataFrame, username: str) -> None:
         _line_layout(fig, "Score by time control")
         fig.update_yaxes(range=[0, 1], tickformat=".0%")
         _plot(fig)
-    st.caption("Both players' public games from the last 6 months (up to 300).")
+    st.caption("Public games, standard chess only, from the last 6 months (at most 300 per player).")

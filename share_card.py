@@ -38,14 +38,14 @@ def render_wrapped_png(username: str, stats: Dict[str, str], url: str = "klimate
 
     _center(d, 90, "KLIMATE CHESS DNA", _font(34), MUTED)
     _center(d, 150, username.upper(), _fit(d, username.upper(), 900, 96), CYAN)
-    _center(d, 300, str(stats.get("top_rating", "N/A")), _font(190), GREEN)
-    _center(d, 520, "PEAK RATING", _font(34), MUTED)
+    _center(d, 300, str(stats.get("peak_rating", "N/A")), _font(190), GREEN)
+    _center(d, 520, str(stats.get("peak_label", "All-time peak")).upper(), _font(34), MUTED)
 
     tiles = [
-        ("WIN RATE", stats.get("win_percentage", "N/A")),
-        ("BEST OPENING", stats.get("deadliest_opening", "N/A")),
-        ("PRIME TIME", stats.get("golden_hour", "N/A")),
-        ("PLAYS LIKE", stats.get("gm_match", "N/A")),
+        ("WINS", stats.get("wins", "N/A")),
+        ("BEST OPENING", stats.get("best_opening", "N/A")),
+        ("PRIME TIME", stats.get("prime_time", "N/A")),
+        ("PLAYS LIKE (FOR FUN)", stats.get("gm_match", "N/A")),
     ]
     x0, y0, tw, th, gap = 60, 620, 450, 250, 60
     for i, (label, value) in enumerate(tiles):

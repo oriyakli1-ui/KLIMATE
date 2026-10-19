@@ -1,124 +1,74 @@
-"""Spatial Analysis page: where the player moves pieces and where pieces are lost."""
+"""Spatial Analysis page: where the player moves pieces and where their pieces are captured."""
 from __future__ import annotations
 
 import numpy as np
 import plotly.express as px
 import streamlit as st
 
-import analytics
+import spatial
+
+FILES = ["a", "b", "c", "d", "e", "f", "g", "h"]
+RANKS = ["1 (your side)", "2", "3", "4", "5", "6", "7", "8 (opponent)"]
+PIECES = ["All Pieces", "Pawn", "Knight", "Bishop", "Rook", "Queen", "King"]
+
+
+def _square(row: int, col: int) -> str:
+    return f"{FILES[col]}{row + 1}"
+
+
+@st.cache_data(show_spinner=False)
+def _maps(pairs: tuple, piece: str):
+    return spatial.heatmaps(pairs, piece)
+
+
+def _heat(grid: np.ndarray, title: str, colors: list[str]) -> None:
+    fig = px.imshow(grid, x=FILES, y=RANKS, aspect="equal", origin="lower", color_continuous_scale=colors)
+    fig.update_layout(
+        title=dict(text=title, font=dict(color="#F8FAFC", size=18)),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E5E7EB"),
+        width=560, height=560, coloraxis_colorbar=dict(title="count"),
+    )
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, scaleanchor="x", scaleratio=1)
+    st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
+    st.plotly_chart(fig, width="content", config={"displayModeBar": False})
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_spatial(games_df, username: str) -> None:
     st.markdown("### Spatial Analysis")
-    piece_options = [
-        "All Pieces",
-        "Pawn",
-        "Knight",
-        "Bishop",
-        "Rook",
-        "Queen",
-        "King",
-    ]
-    piece_filter = st.selectbox(
-        "Filter by piece type",
-        piece_options,
-        index=0,
-        key="spatial_piece_filter",
+    piece = st.selectbox("Filter by piece type", PIECES, index=0, key="spatial_piece_filter")
+
+    me = username.strip().lower()
+    pairs = tuple(
+        (pgn, str(w).strip().lower() == me) for pgn, w in zip(games_df["pgn"], games_df["white_player"])
     )
-    activity_map, vulnerability_map = analytics.generate_spatial_heatmaps(
-        games_df, username, piece_filter=piece_filter
+    activity, captured, used = _maps(pairs, piece)
+    st.caption(
+        f"Based on {used} games. Both maps are drawn from YOUR side of the board: rank 1 is your own "
+        "back rank, whether you played White or Black."
     )
-    files = ["a", "b", "c", "d", "e", "f", "g", "h"]
-    ranks = ["1", "2", "3", "4", "5", "6", "7", "8"]
+    label = "pieces" if piece == "All Pieces" else piece.lower() + "s"
 
-    # Insights: max-activity and max-vulnerability squares (row, col) -> chess notation
-    def _row_col_to_square(row: int, col: int) -> str:
-        return chr(col + ord("a")) + str(row + 1)
-
-    act_max = float(np.max(activity_map)) if activity_map.size else 0
-    vuln_max = float(np.max(vulnerability_map)) if vulnerability_map.size else 0
-    if act_max > 0:
-        ar, ac = np.unravel_index(np.argmax(activity_map), activity_map.shape)
-        activity_square = _row_col_to_square(int(ar), int(ac))
-    else:
-        activity_square = None
-    if vuln_max > 0:
-        vr, vc = np.unravel_index(
-            np.argmax(vulnerability_map), vulnerability_map.shape
-        )
-        vulnerability_square = _row_col_to_square(int(vr), int(vc))
-    else:
-        vulnerability_square = None
-
-    piece_label = piece_filter.lower() if piece_filter != "All Pieces" else "pieces"
-
-    tab1, tab2 = st.tabs(["🟢 Activity Map", "🔴 Vulnerability Map"])
-
+    tab1, tab2 = st.tabs(["🟢 Activity Map", "🔴 Captured Pieces Map"])
     with tab1:
-        if activity_square:
+        if activity.max() > 0:
+            r, c = np.unravel_index(np.argmax(activity), activity.shape)
             st.success(
-                f"**🎯 Strategic Directive:** Your {piece_label} thrives on **{activity_square}**. "
-                "In your next games, actively look for pawn breaks or maneuvers that help you establish "
-                "an outpost on this exact square."
+                f"Your {label} most often land on **{_square(int(r), int(c))}** "
+                f"({int(activity.max())} of {int(activity.sum())} moves)."
             )
         else:
-            st.info("No activity data for this filter yet.")
-        fig_act = px.imshow(
-            activity_map,
-            x=files,
-            y=ranks,
-            aspect="equal",
-            origin="lower",
-            color_continuous_scale=["#0F172A", "#06B6D4", "#22D3EE"],
-        )
-        fig_act.update_layout(
-            title=dict(
-                text="Where do you move your pieces?",
-                font=dict(color="#F8FAFC", size=18),
-            ),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#E5E7EB"),
-            width=550,
-            height=550,
-        )
-        fig_act.update_xaxes(showgrid=False, showticklabels=True)
-        fig_act.update_yaxes(
-            showgrid=False, showticklabels=True, scaleanchor="x", scaleratio=1
-        )
-        st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-        st.plotly_chart(fig_act, width="content", config={"displayModeBar": False})
-        st.markdown("</div>", unsafe_allow_html=True)
-
+            st.info("No moves for this filter yet.")
+        _heat(activity, "Where do your moves end up?", ["#0F172A", "#06B6D4", "#22D3EE"])
     with tab2:
-        if vulnerability_square:
+        if captured.max() > 0:
+            r, c = np.unravel_index(np.argmax(captured), captured.shape)
             st.warning(
-                f"**🛑 Danger Zone Alert:** You bleed material heavily on **{vulnerability_square}**. "
-                f"Before moving your {piece_label} here, or if your opponent attacks this sector, force yourself "
-                "to stop for 3 seconds and double-check for discovered attacks or hanging pieces."
+                f"Your {label} are captured most often on **{_square(int(r), int(c))}** "
+                f"({int(captured.max())} of {int(captured.sum())} captures). Every capture counts, including "
+                "even trades, so this shows where the fighting happens, not only where you lose material."
             )
         else:
-            st.info("No vulnerability data for this filter yet.")
-        fig_vuln = px.imshow(
-            vulnerability_map,
-            x=files,
-            y=ranks,
-            aspect="equal",
-            origin="lower",
-            color_continuous_scale=["#0F172A", "#EF4444", "#F87171"],
-            title="Where do you lose your pieces?",
-        )
-        fig_vuln.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#E5E7EB"),
-            width=550,
-            height=550,
-        )
-        fig_vuln.update_xaxes(showgrid=False, showticklabels=True)
-        fig_vuln.update_yaxes(
-            showgrid=False, showticklabels=True, scaleanchor="x", scaleratio=1
-        )
-        st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
-        st.plotly_chart(fig_vuln, width="content", config={"displayModeBar": False})
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.info("No captures for this filter yet.")
+        _heat(captured, "Where are your pieces captured?", ["#0F172A", "#EF4444", "#F87171"])

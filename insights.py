@@ -11,18 +11,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from metrics import mean_ci, performance_rating, score_result, significantly_different, wilson_interval
+
 SESSION_GAP_MINUTES = 30
-DRAW_RESULTS = {"agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"}
 _CLK_RE = re.compile(r"\[%clk (\d+):(\d{2}):(\d{2}(?:\.\d+)?)\]")
-
-
-def _score(result: object) -> float:
-    r = str(result or "").strip().lower()
-    if r == "win":
-        return 1.0
-    if r in DRAW_RESULTS:
-        return 0.5
-    return 0.0
 
 
 def parse_time_control(tc: object) -> Tuple[Optional[float], Optional[float]]:
@@ -45,7 +37,7 @@ def user_clocks(pgn: object, is_white: bool) -> List[float]:
 def enrich_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
     """One row per game of ``username``, oldest first, with user-perspective columns."""
     cols = [
-        "date_utc", "user_color", "user_rating", "opp_rating", "rating_diff", "user_result",
+        "date_utc", "start_utc", "rated", "user_color", "user_rating", "opp_rating", "rating_diff", "user_result",
         "opp_result", "score", "outcome", "time_class", "base_seconds", "inc_seconds", "opening",
         "session_id", "session_game_no", "losses_before", "user_moves", "final_clock",
         "avg_move_seconds", "clock_after_15_pct", "scramble", "lost_on_time", "won_on_time",
@@ -61,14 +53,23 @@ def enrich_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
     is_white = (mine["white_player"].astype(str).str.lower() == u).to_numpy()
 
     out = pd.DataFrame(index=mine.index)
-    out["date_utc"] = pd.to_datetime(mine["date_utc"], utc=True)
+    out["date_utc"] = pd.to_datetime(mine["date_utc"], utc=True)  # when the game ended
+    out["start_utc"] = (
+        pd.to_datetime(mine["start_utc"], utc=True) if "start_utc" in mine.columns
+        else pd.Series(pd.NaT, index=mine.index, dtype="datetime64[ns, UTC]")
+    )
+    out["rated"] = mine["rated"].astype(bool) if "rated" in mine.columns else True
     out["user_color"] = np.where(is_white, "white", "black")
     out["user_rating"] = pd.to_numeric(np.where(is_white, mine["white_rating"], mine["black_rating"]), errors="coerce")
     out["opp_rating"] = pd.to_numeric(np.where(is_white, mine["black_rating"], mine["white_rating"]), errors="coerce")
     out["rating_diff"] = out["opp_rating"] - out["user_rating"]
     out["user_result"] = np.where(is_white, mine["white_result"], mine["black_result"])
     out["opp_result"] = np.where(is_white, mine["black_result"], mine["white_result"])
-    out["score"] = out["user_result"].map(_score)
+    out["score"] = [score_result(m, o) for m, o in zip(out["user_result"], out["opp_result"])]
+    out["score"] = out["score"].astype(float)
+    unknown = out["score"].isna()
+    if unknown.any():  # results we do not understand are left out rather than guessed
+        out = out[~unknown].copy()
     out["outcome"] = np.where(out["score"] == 1.0, "win", np.where(out["score"] == 0.5, "draw", "loss"))
     out["time_class"] = mine["time_class"].fillna("")
     tc = mine["time_control"] if "time_control" in mine.columns else pd.Series("", index=mine.index)
@@ -82,14 +83,18 @@ def enrich_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
     # Carry the PGN and colour through the sort so clocks stay aligned with their game.
     out["_pgn"] = mine["pgn"] if "pgn" in mine.columns else ""
     out["_white"] = is_white
-    out = out.sort_values("date_utc", kind="stable").reset_index(drop=True)
+    out["_start_eff"] = out["start_utc"].fillna(out["date_utc"])
+    out = out.sort_values(["_start_eff", "date_utc"], kind="stable").reset_index(drop=True)
     pgn = out.pop("_pgn")
     white_sorted = out.pop("_white")
 
-    # --- sessions: a new session starts after a gap longer than SESSION_GAP_MINUTES
-    gap = out["date_utc"].diff().dt.total_seconds().div(60)
+    # --- sessions: a new session starts when the idle time between one game's end and the
+    # next game's start exceeds SESSION_GAP_MINUTES. (End-to-end gaps would wrongly split a
+    # session of long games.) Overlapping games count as the same session.
+    gap = (out["_start_eff"] - out["date_utc"].shift()).dt.total_seconds().div(60)
     out["session_id"] = (gap.isna() | (gap > SESSION_GAP_MINUTES)).cumsum().astype(int)
     out["session_game_no"] = out.groupby("session_id").cumcount() + 1
+    out = out.drop(columns="_start_eff")
 
     losses_before, streak, prev_sid = [], 0, None
     for sid, outcome in zip(out["session_id"], out["outcome"]):
@@ -229,14 +234,118 @@ def color_profile(g: pd.DataFrame) -> pd.DataFrame:
 
 
 def _significant(n1: int, s1: float, n2: int, s2: float, z: float = 1.64) -> bool:
-    """True when two mean scores differ by more than chance would explain (one-sided ~95%).
+    """See ``metrics.significantly_different``."""
+    return significantly_different(n1, s1, n2, s2, z)
 
-    Uses the worst-case score variance of 0.25 per game, so it errs on the side of silence.
+
+def overall_summary(g: pd.DataFrame) -> Dict[str, object]:
+    """Wins/draws/losses, score (wins + half draws) and win rate, each with a 95% interval."""
+    n = len(g)
+    if n == 0:
+        return {"n": 0}
+    w, d, l = int((g["outcome"] == "win").sum()), int((g["outcome"] == "draw").sum()), int((g["outcome"] == "loss").sum())
+    score, s_lo, s_hi = mean_ci(g["score"].to_numpy())
+    w_lo, w_hi = wilson_interval(w, n)
+    return {"n": n, "wins": w, "draws": d, "losses": l, "score": score, "score_lo": s_lo, "score_hi": s_hi,
+            "win_rate": w / n, "win_lo": w_lo, "win_hi": w_hi}
+
+
+def performance_summary(g: pd.DataFrame, min_games: int = 20) -> Dict[str, object]:
+    """Performance rating of the most-played time class, rated games only.
+
+    Ratings of different time controls are not comparable, so classes are never mixed.
+    ``rating`` is NaN when there are fewer than ``min_games`` rated games in that class.
     """
-    if min(n1, n2) < 2:
-        return False
-    se = (0.25 / n1 + 0.25 / n2) ** 0.5
-    return abs(s1 - s2) >= z * se
+    r = g[g["rated"] & g["opp_rating"].notna()]
+    if r.empty:
+        return {"rating": float("nan"), "time_class": "", "n": 0, "mixed_classes": False}
+    tc = r["time_class"].value_counts().index[0]
+    sub = r[r["time_class"] == tc]
+    rating = float("nan")
+    if len(sub) >= min_games:
+        rating = performance_rating(sub["opp_rating"].to_numpy(), float(sub["score"].sum()))
+    return {"rating": rating, "time_class": tc, "n": len(sub), "mixed_classes": r["time_class"].nunique() > 1,
+            "avg_opponent": float(sub["opp_rating"].mean()), "score": float(sub["score"].mean())}
+
+
+def tilt_summary(g: pd.DataFrame, min_n: int = 20) -> Dict[str, object]:
+    """Loss rate right after a loss (same session) versus in games that do not follow a loss."""
+    after, other = g[g["losses_before"] >= 1], g[g["losses_before"] == 0]
+    out = {"n_after": len(after), "n_other": len(other), "enough": len(after) >= min_n and len(other) >= min_n}
+    out["loss_after"] = float((after["outcome"] == "loss").mean()) if len(after) else float("nan")
+    out["loss_other"] = float((other["outcome"] == "loss").mean()) if len(other) else float("nan")
+    out["delta"] = out["loss_after"] - out["loss_other"] if out["enough"] else float("nan")
+    out["significant"] = bool(out["enough"] and out["delta"] > 0 and significantly_different(
+        len(after), 1 - out["loss_after"], len(other), 1 - out["loss_other"]))
+    return out
+
+
+def current_streak(g: pd.DataFrame) -> Tuple[str, int]:
+    """('win'|'loss'|'none', length) counted from the most recent game; a draw ends the streak."""
+    if g.empty:
+        return "none", 0
+    newest_first = g.sort_values("date_utc", ascending=False)["outcome"].tolist()
+    kind = newest_first[0]
+    if kind == "draw":
+        return "none", 0
+    n = 0
+    for o in newest_first:
+        if o != kind:
+            break
+        n += 1
+    return kind, n
+
+
+def hourly_profile(g: pd.DataFrame, timezone: str = "UTC") -> pd.DataFrame:
+    """Per local hour of the day the game STARTED: games, wins/draws/losses, score with 95% interval."""
+    cols = ["hour", "games", "wins", "draws", "losses", "score", "lo", "hi"]
+    if g.empty:
+        return pd.DataFrame(columns=cols)
+    when = g["start_utc"].fillna(g["date_utc"]).dt.tz_convert(timezone)
+    d = g.assign(hour=when.dt.hour)
+    rows = []
+    for h in range(24):
+        s = d[d["hour"] == h]
+        m, lo, hi = mean_ci(s["score"].to_numpy()) if len(s) else (float("nan"),) * 3
+        rows.append({"hour": h, "games": len(s), "wins": int((s["outcome"] == "win").sum()),
+                     "draws": int((s["outcome"] == "draw").sum()), "losses": int((s["outcome"] == "loss").sum()),
+                     "score": m, "lo": lo, "hi": hi})
+    return pd.DataFrame(rows, columns=cols)
+
+
+def best_hour(profile: pd.DataFrame, min_games: int = 10, z: float = 2.5) -> Optional[Dict[str, object]]:
+    """The best hour, only when it beats the rest of the day by more than chance.
+
+    The hour is picked out of up to 24 candidates, so the bar (z=2.5) is stricter than for a
+    single planned comparison.
+    """
+    ok = profile[profile["games"] >= min_games]
+    if ok.empty:
+        return None
+    best = ok.loc[ok["score"].idxmax()]
+    rest = profile[profile["hour"] != best["hour"]]
+    n_rest = int(rest["games"].sum())
+    if n_rest < min_games:
+        return None
+    s_rest = float((rest["score"].fillna(0) * rest["games"]).sum() / n_rest)
+    if not significantly_different(int(best["games"]), float(best["score"]), n_rest, s_rest, z) or best["score"] <= s_rest:
+        return None
+    return {"hour": int(best["hour"]), "games": int(best["games"]), "score": float(best["score"]), "rest": s_rest}
+
+
+def opening_summary(g: pd.DataFrame, min_games: int = 1) -> pd.DataFrame:
+    """Opening families with games, score and a 95% interval, most played first. 'Unknown' is excluded."""
+    cols = ["opening", "games", "score", "lo", "hi"]
+    if g.empty or "opening" not in g.columns:
+        return pd.DataFrame(columns=cols)
+    d = g[g["opening"].astype(str).str.len() > 0]
+    d = d[d["opening"] != "Unknown"]
+    rows = []
+    for name, grp in d.groupby("opening"):
+        if len(grp) >= min_games:
+            m, lo, hi = mean_ci(grp["score"].to_numpy())
+            rows.append({"opening": name, "games": len(grp), "score": m, "lo": lo, "hi": hi})
+    return pd.DataFrame(rows, columns=cols).sort_values("games", ascending=False).reset_index(drop=True)
 
 
 # English templates; i18n.py holds translations keyed the same way.
