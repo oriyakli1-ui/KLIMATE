@@ -161,3 +161,24 @@ def test_gemini_call_disables_thinking_and_rejects_truncated_answers(monkeypatch
         pass
     else:
         raise AssertionError("a truncated answer must not be returned")
+
+
+def test_cut_off_answers_are_rejected_and_fall_back(monkeypatch):
+    import llm
+
+    assert llm.looks_complete("A full sentence.")
+    assert llm.looks_complete("It is **bold** and done!")
+    assert not llm.looks_complete("Great job! Your **biggest weakness")
+    assert not llm.looks_complete("Ends without punctuation")
+    assert not llm.looks_complete("")
+
+    monkeypatch.setattr(llm, "_gemini", lambda p, n: "Your **biggest weakness")
+    monkeypatch.setattr(llm, "_groq", lambda p, n: "Complete answer from the fallback.")
+    assert llm.generate.__wrapped__("x", 300, 2) == "Complete answer from the fallback."
+    monkeypatch.setattr(llm, "_groq", lambda p, n: "also cut")
+    try:
+        llm.generate.__wrapped__("x", 300, 2)
+    except llm.LLMUnavailable:
+        pass
+    else:
+        raise AssertionError("two truncated answers must raise")

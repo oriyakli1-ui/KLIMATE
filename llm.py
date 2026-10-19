@@ -58,15 +58,29 @@ def _groq(prompt: str, max_tokens: int) -> str:
     return text
 
 
+def looks_complete(text: str) -> bool:
+    """Heuristic guard against answers cut off mid-sentence or mid-bold (provider quirks, token limits)."""
+    s = text.strip()
+    return bool(s) and s.endswith((".", "!", "?", ")", '"', "'", "”", "…")) and s.count("**") % 2 == 0
+
+
 @st.cache_data(show_spinner=False, ttl=86400)
-def generate(prompt: str, max_tokens: int = 400) -> str:
-    """Answer ``prompt``. Cached per prompt; raises LLMUnavailable (never cached) on failure."""
+def generate(prompt: str, max_tokens: int = 400, version: int = 2) -> str:
+    """Answer ``prompt``. Cached per prompt; raises LLMUnavailable (never cached) on failure.
+
+    ``version`` is part of the cache key: bump it when the generation logic changes so stale
+    answers (for example truncated ones) are not served from the cache.
+    """
     errors = []
     for provider in (_gemini, _groq):
         try:
-            return provider(prompt, max_tokens)
+            text = provider(prompt, max_tokens)
         except Exception as exc:  # noqa: BLE001 - any provider failure means "try the next one"
             errors.append(f"{provider.__name__}: {exc}")
+            continue
+        if looks_complete(text):
+            return text
+        errors.append(f"{provider.__name__}: answer looks cut off")
     raise LLMUnavailable("; ".join(errors))
 
 
