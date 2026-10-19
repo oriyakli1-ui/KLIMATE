@@ -91,7 +91,7 @@ def render_coach_report(games_df: pd.DataFrame, username: str) -> None:
              [f"{s:.0%}<br>n={n_}" for s, n_ in zip(types_df["share"], types_df["count"])], height=300)
         st.caption("Error types are heuristics based on the engine's best moves, not a verdict.")
 
-    if st.button("Write my coaching summary", key="coach_summary"):
+    if st.button("Write my coaching summary", key="coach_summary_btn"):
         with st.spinner("Writing…"):
             st.session_state["coach_summary"] = llm.pattern_summary(coach.stats_text(moves, games))
     if st.session_state.get("coach_summary"):
