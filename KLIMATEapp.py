@@ -130,11 +130,11 @@ def _sidebar(games_df, enriched, username: str):
             # opens that section's first page.
             default_index=0,
             styles={
-                "container": {"padding": "0!important", "background-color": "transparent"},
+                "container": {"padding": "0!important", "background-color": "#0B1220"},
                 "icon": {"color": "#06B6D4", "font-size": "17px"},
-                "nav-link": {"font-size": "15px", "text-align": "left", "margin": "0px",
-                             "--hover-color": "rgba(6, 182, 212, 0.1)"},
-                "nav-link-selected": {"background-color": "#06B6D4", "font-weight": "bold"},
+                "nav-link": {"font-size": "15px", "text-align": "left", "margin": "0px", "color": "#E5E7EB",
+                             "--hover-color": "rgba(6, 182, 212, 0.15)"},
+                "nav-link-selected": {"background-color": "#06B6D4", "font-weight": "bold", "color": "#0F172A"},
             },
         )
         with st.expander(t("filters")):
@@ -214,6 +214,8 @@ def _dashboard() -> None:
         views_insights.render_behavior_lab(enriched_f)
     elif page == "ledger":
         views_features.render_elo_ledger(enriched_f, _tz())
+    elif page == "weekly":
+        views_features.render_weekly(st.session_state["enriched"], username, _tz())
     elif page == "playnow":
         views_features.render_play_now(st.session_state["enriched"], username, _tz(), lambda: _refresh_games(username))
     elif page == "openingcheck":
