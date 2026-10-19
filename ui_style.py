@@ -52,17 +52,39 @@ def inject_global_styles() -> None:
             box-shadow: 0 18px 40px rgba(15, 23, 42, 0.8);
         }
         .klimate-metric-label {
-            font-size: 1.1rem;
+            font-size: 0.85rem;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.08em;
             color: #F8FAFC;
             margin-bottom: 0.3rem;
             font-weight: 600;
         }
         .klimate-metric-value {
-            font-size: 1.8rem;
+            font-size: clamp(1.4rem, 2.2vw, 1.9rem);
             font-weight: 700;
             color: #E5E7EB;
+            white-space: nowrap;
+        }
+        .klimate-metric-sub {
+            color: #94A3B8;
+            font-size: 0.8rem;
+            margin-top: 0.15rem;
+        }
+        .klimate-card { min-height: 112px; }
+
+        /* Landing page value cards */
+        .klimate-value-card {
+            background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 1.1rem 1.2rem; height: 100%;
+        }
+        .klimate-value-card .vc-icon { font-size: 1.5rem; }
+        .klimate-value-card .vc-title { color: #F8FAFC; font-weight: 700; margin: 0.3rem 0 0.2rem 0; }
+        .klimate-value-card .vc-text { color: #94A3B8; font-size: 0.92rem; line-height: 1.45; }
+
+        /* Hide Streamlit's own footer; keep the page clean */
+        footer { visibility: hidden; }
+        @media (max-width: 768px) {
+            .block-container { padding-left: 1rem; padding-right: 1rem; }
+            .klimate-card { padding: 14px 14px; min-height: 96px; }
         }
         .klimate-metric-value--success {
             color: #10B981;

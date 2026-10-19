@@ -70,14 +70,15 @@ def render_overview_page(g, username: str) -> None:
     """Overview: live ratings, streak, score, performance rating, tilt and openings (``g`` = enriched games)."""
     ratings = analytics.get_real_time_ratings(username)
     kind, n = insights.current_streak(g)
-    streak = "➖ 0" if kind == "none" else (f"🔥 {n} Wins" if kind == "win" else f"🧊 {n} Losses")
+    streak_value = "0" if kind == "none" else f"{'🔥' if kind == 'win' else '🧊'} {n}"
+    streak_sub = "no streak" if kind == "none" else ("wins in a row" if kind == "win" else "losses in a row")
 
     st.markdown("<div style='margin-top: 2.5rem;'></div>", unsafe_allow_html=True)
     cols = st.columns(4)
-    for col, (title, val) in zip(cols, (("Rapid Rating", ratings["rapid"]), ("Blitz Rating", ratings["blitz"]),
-                                        ("Bullet Rating", ratings["bullet"]), ("Current Streak", streak))):
+    for col, (title, val, sub) in zip(cols, (("Rapid", ratings["rapid"], "current rating"), ("Blitz", ratings["blitz"], "current rating"),
+                                             ("Bullet", ratings["bullet"], "current rating"), ("Streak", streak_value, streak_sub))):
         with col:
-            render_dashboard_metric_card(title=title, value_str=str(val))
+            render_dashboard_metric_card(title=title, value_str=str(val), sub=sub)
     st.divider()
 
     summ = insights.overall_summary(g)

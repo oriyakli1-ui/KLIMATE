@@ -5,7 +5,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import actions
 import analytics
+import html
 import insights
 import ledger
 import opening_eval
@@ -191,3 +193,31 @@ def render_opening_check(games_df: pd.DataFrame, username: str) -> None:
                        "Score": rep["score"].map("{:.0%}".format), "Verdict": rep["verdict"]})
     st.dataframe(table[["Opening", "Colour", "Games", "After move 10", "Score", "Verdict"]], hide_index=True, width="stretch")
     st.caption("Evaluations come from Stockfish at a fixed depth. Openings with few games have wide intervals, so treat them as hints.")
+
+
+# --------------------------------------------------------------- Action Center
+def render_action_center(g: pd.DataFrame, g_full: pd.DataFrame, username: str, timezone: str) -> None:
+    """Top of the Overview: the three things most worth doing next, from the player's own evidence."""
+    st.markdown("### 🎯 Your next steps")
+    if len(g) < 30:
+        st.info("Load at least 30 games to get personal next steps.")
+        return
+    store = st.session_state.get("opening_eval")
+    report = opening_eval.report(store["data"]) if store and store.get("user") == username else None
+    light, in_session = "grey", False
+    if len(g_full) >= 60:
+        state = readiness.current_state(g_full, pd.Timestamp.now(tz="UTC"), timezone)
+        light, in_session = readiness.assess(g_full, state, timezone)["light"], bool(state["in_session"])
+    todo = actions.build_actions(insights.generate_insights(g), ledger.ledger(g, timezone)["table"], light, report, in_session, len(g))
+    colours = {"warn": "#F59E0B", "info": "#06B6D4", "good": "#10B981"}
+    for i, a in enumerate(todo, start=1):
+        st.markdown(
+            f"<div style='display:flex;gap:14px;align-items:flex-start;background:#1E293B;border:1px solid #334155;"
+            f"border-radius:12px;padding:0.9rem 1.1rem;margin:0.5rem 0;'>"
+            f"<div style='min-width:30px;height:30px;border-radius:50%;background:{colours[a['tone']]};color:#0F172A;font-weight:800;"
+            f"display:flex;align-items:center;justify-content:center;'>{i}</div>"
+            f"<div><div style='font-weight:700;color:#F8FAFC;'>{html.escape(a['title'])}</div>"
+            f"<div style='color:#CBD5E1;margin-top:0.2rem;'>{html.escape(a['detail'])}</div>"
+            f"<div style='color:#06B6D4;font-size:0.82rem;margin-top:0.35rem;'>Open in the sidebar: {html.escape(a['where'])}</div></div></div>",
+            unsafe_allow_html=True,
+        )

@@ -59,13 +59,15 @@ def render_metric_card(
     )
 
 
-def render_dashboard_metric_card(title: str, value_str: str) -> None:
-    """Render a Bento-style metric card (title + value only, no badge)."""
+def render_dashboard_metric_card(title: str, value_str: str, sub: str = "") -> None:
+    """Render a Bento-style metric card (title + value, optional small line under the value)."""
+    sub_html = f'<div class="klimate-metric-sub">{sub}</div>' if sub else ""
     st.markdown(
         f"""
         <div class="klimate-card">
             <div class="klimate-metric-label">{title}</div>
             <div class="klimate-metric-value">{value_str}</div>
+            {sub_html}
         </div>
         """,
         unsafe_allow_html=True,
