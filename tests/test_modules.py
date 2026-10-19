@@ -124,3 +124,40 @@ def test_unknown_opening_never_ranks(games_factory):
     df = games_factory(["win"] * 6)
     df["opening"] = "Unknown"
     assert analytics.analyze_openings(df, "me").empty
+
+
+def test_gemini_call_disables_thinking_and_rejects_truncated_answers(monkeypatch):
+    import sys
+    import types as pytypes
+
+    import llm
+
+    seen = {}
+
+    class FakeModels:
+        def __init__(self, finish):
+            self.finish = finish
+
+        def generate_content(self, model, contents, config):
+            seen["config"] = config
+            cand = pytypes.SimpleNamespace(finish_reason=self.finish)
+            return pytypes.SimpleNamespace(text="A full answer.", candidates=[cand])
+
+    def fake_client(finish):
+        return lambda api_key: pytypes.SimpleNamespace(models=FakeModels(finish))
+
+    monkeypatch.setattr(llm, "st", pytypes.SimpleNamespace(secrets={"GEMINI_API_KEY": "k"}))
+    import google.genai as genai
+
+    monkeypatch.setattr(genai, "Client", fake_client("STOP"))
+    assert llm._gemini("hi", 300) == "A full answer."
+    assert seen["config"].thinking_config.thinking_budget == 0
+    assert seen["config"].max_output_tokens >= 800
+
+    monkeypatch.setattr(genai, "Client", fake_client("FinishReason.MAX_TOKENS"))
+    try:
+        llm._gemini("hi", 300)
+    except llm.LLMUnavailable:
+        pass
+    else:
+        raise AssertionError("a truncated answer must not be returned")
