@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import shutil
 import time
 from typing import Dict, List, Tuple
 
 import chess
-import chess.engine
 import chess.pgn
 import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
-import google.generativeai as genai
-from groq import Groq
-
 from data_engine import ChessComAPIError, fetch_player_games
+from uci import UciEngine
+from llm import coach_explanation as get_gemini_coach_explanation  # noqa: F401  (kept for callers)
 
 
 def _filter_player_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
@@ -304,85 +303,12 @@ def get_real_time_ratings(username: str) -> Dict[str, object]:
     }
 
 
-_COACH_FAILURE_PREFIX = "AI Coach is currently resting"
 
 
-@st.cache_data(show_spinner=False, ttl=86400)
-def _coach_explanation_cached(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
-    """Cache successful explanations only: a failure raises, so it is never stored."""
-    text = _generate_coach_explanation(fen, actual_move, best_move, user_loss)
-    if text.startswith(_COACH_FAILURE_PREFIX):
-        raise RuntimeError(text)
-    return text
 
 
-def get_gemini_coach_explanation(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
-    """
-    Short AI coaching explanation for a blunder. Cached per position, because
-    Streamlit reruns the whole script on every interaction and each call is a
-    paid/rate-limited LLM request.
-    """
-    try:
-        return _coach_explanation_cached(fen, actual_move, best_move, round(float(user_loss), 2))
-    except RuntimeError as exc:
-        return str(exc)
 
 
-def _generate_coach_explanation(fen: str, actual_move: str, best_move: str, user_loss: float) -> str:
-    """
-    Use Gemini to generate a short coaching explanation for a specific blunder or key moment.
-    """
-    if not fen:
-        return "AI Coach is currently resting. Position (FEN) is unavailable."
-
-    prompt = (
-        "You are an elite Chess Psychology Coach. "
-        f"The current board position (FEN) is: {fen}. "
-        f"The player played '{actual_move}', but the best engine move was '{best_move}'. "
-        f"This mistake cost the player {user_loss:.2f} points in evaluation. "
-        "Your goal is to explain the 'Why' behind the mistake from a human perspective. "
-        "Analyze if this looks like: "
-        "- Panic/Defensive oversight. "
-        "- Greed (grabbing a pawn while ignoring a threat). "
-        "- Tunnel vision (focusing on one area while missing the big picture). "
-        "- Impatience in a winning position. "
-        "Explain in 2-3 punchy, encouraging sentences. Focus on the human psychology of the error and give one actionable tip to avoid this pattern next time."
-    )
-
-    try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        response = model.generate_content(prompt)
-        # Prefer response.text when available
-        text = getattr(response, "text", None)
-        if isinstance(text, str) and text.strip():
-            return text.strip()
-        return "AI Coach is currently resting. The response did not contain usable text."
-    except Exception as e:
-        msg = str(e)
-        if ("429" in msg) or ("ResourceExhausted" in msg):
-            try:
-                groq_key = st.secrets["GROQ_API_KEY"]
-                client = Groq(api_key=groq_key)
-                completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an elite Chess Psychology Coach. Be concise, practical, and encouraging.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.4,
-                    max_tokens=220,
-                )
-                content = completion.choices[0].message.content
-                if isinstance(content, str) and content.strip():
-                    return content.strip()
-                return "AI Coach is currently resting. Groq returned an empty response."
-            except Exception as groq_exc:
-                return "AI Coach is currently resting. Error: " + str(groq_exc)
-        return "AI Coach is currently resting. Error: " + msg
 
 
 def get_current_profile_stats(df: pd.DataFrame) -> Tuple[Dict[str, object], str]:
@@ -575,20 +501,16 @@ def get_wrapped_data(df: pd.DataFrame, username: str, live_ratings: Dict[str, ob
     except Exception:
         pass
 
-    # 4. GM Match (Based ONLY on the raw name, ignoring percentages)
-    op_clean = deadliest_opening_name.lower().replace("'", "").replace("-", " ")
-    if "unknown" in op_clean or op_clean == "":
-        gm_match = "Unknown (Play more games!)"
-    elif any(x in op_clean for x in ["caro", "french", "slav", "london", "petrov", "queens pawn", "colle", "philidor"]):
-        gm_match = "Anatoly Karpov (Solid & Positional)"
-    elif any(x in op_clean for x in ["sicilian", "kings gambit", "evan", "dutch", "alekhine", "danish", "vienna", "scotch", "latvian", "englund", "morra"]):
-        gm_match = "Mikhail Tal (Aggressive Tactician)"
-    elif any(x in op_clean for x in ["ruy lopez", "queens gambit", "english", "catalan", "reti", "italian", "giuoco", "spanish", "bishops"]):
-        gm_match = "Magnus Carlsen (Universal & Precise)"
-    elif any(x in op_clean for x in ["indian", "grunfeld", "pirc", "modern", "scandinavian", "benoni", "benko", "trompowsky"]):
-        gm_match = "Garry Kasparov (Dynamic & Fierce)"
-    else:
-        gm_match = "Hikaru Nakamura (Fast & Unpredictable)"
+    # 5. GM match from how the player actually plays (captures/checks and game length)
+    gm_match = "Unknown (Play more games!)"
+    try:
+        import style
+
+        profile = style.style_profile(df, username)
+        name, blurb = style.match_archetype(profile)
+        gm_match = f"{name} ({blurb.split(':')[0]})" if blurb else name
+    except Exception:
+        pass
 
     return {
         "top_rating": top_rating,
@@ -831,6 +753,8 @@ def analyze_game_with_chess_api(pgn_string: str, max_plies: int = 40) -> pd.Data
 
     return pd.DataFrame(rows, columns=["ply", "move_san", "evaluation", "best_move"])
 
+log = logging.getLogger(__name__)
+
 
 def _find_stockfish() -> str | None:
     """Path of a local Stockfish binary, or None (set STOCKFISH_PATH to override)."""
@@ -858,11 +782,12 @@ def analyze_game_with_stockfish(pgn_string: str, max_plies: int = 150, depth: in
         return empty
     try:
         game = chess.pgn.read_game(io.StringIO(pgn_string))
-        engine = chess.engine.SimpleEngine.popen_uci(path)
+        engine = UciEngine(path)
     except Exception:
+        log.exception("Stockfish failed to start (%s)", path)
         return empty
     if game is None:
-        engine.quit()
+        engine.close()
         return empty
 
     rows = []
@@ -873,24 +798,21 @@ def analyze_game_with_stockfish(pgn_string: str, max_plies: int = 150, depth: in
                 break
             san = board.san(move)
             board.push(move)
-            info = engine.analyse(board, chess.engine.Limit(depth=depth))
-            cp = info["score"].white().score(mate_score=1000)
-            pv = info.get("pv") or []
+            cp, best = engine.analyse(board.fen(), depth)
+            if cp is None:
+                continue
             rows.append(
                 {
                     "ply": ply,
                     "move_san": san,
                     "evaluation": float(max(-10.0, min(10.0, cp / 100.0))),
-                    "best_move": pv[0].uci() if pv else "",
+                    "best_move": best,
                 }
             )
     except Exception:
-        pass
+        log.exception("Stockfish analysis failed")
     finally:
-        try:
-            engine.quit()
-        except Exception:
-            pass
+        engine.close()
     return pd.DataFrame(rows, columns=["ply", "move_san", "evaluation", "best_move"])
 
 

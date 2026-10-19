@@ -4,6 +4,7 @@ numpy
 plotly
 streamlit-option-menu
 chess
-google-generativeai
+google-genai
 requests
 groq
+pillow

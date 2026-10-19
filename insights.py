@@ -119,7 +119,7 @@ def enrich_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
     out["avg_move_seconds"] = avgs
     out["clock_after_15_pct"] = c15
     thresh = out["base_seconds"].map(lambda b: max(10.0, min(30.0, 0.1 * b)) if b and b == b else np.nan)
-    out["scramble"] = out["final_clock"] < thresh
+    out["scramble"] = (out["final_clock"] < thresh).astype(object)  # object: holds True/False/NaN
     out.loc[out["final_clock"].isna() | thresh.isna(), "scramble"] = np.nan
     return out[cols]
 
@@ -239,22 +239,65 @@ def _significant(n1: int, s1: float, n2: int, s2: float, z: float = 1.64) -> boo
     return abs(s1 - s2) >= z * se
 
 
-def generate_insights(g: pd.DataFrame, min_n: int = 8) -> List[Dict[str, str]]:
-    """Rule-based, evidence-backed findings, most actionable first. No LLM involved."""
-    found: List[Dict[str, str]] = []
+# English templates; i18n.py holds translations keyed the same way.
+TEMPLATES = {
+    "stop_loss": (
+        "Your personal stop-loss: quit the session after {n} loss{es} in a row",
+        "After {n}{plus} straight loss(es) in a session your score drops to {score} (vs {baseline} overall, {games} games).",
+    ),
+    "warmup": (
+        "You start sessions cold: your first game is your weakest",
+        "You score {first} in the first game of a session vs {rest} in the rest ({n} sessions). Try a warm-up game or a few puzzles first.",
+    ),
+    "scramble": (
+        "Time scrambles cost you: {rate} of games end with almost no time",
+        "When you are in a scramble you score {score} vs {other} otherwise ({n} games).",
+    ),
+    "early_burn": (
+        "You spend too much clock early in the game",
+        "When you have under 70% of your time left after move 15 you score {burn} vs {calm} ({n} games).",
+    ),
+    "timeouts": (
+        "{share} of your losses are on time",
+        "{losses} games lost on the clock vs {wins} won that way. Consider an increment time control.",
+    ),
+    "lower_rated": (
+        "You underperform against lower-rated opponents",
+        "Against opponents rated 30+ below you, ratings predict {expected} but you score {actual} ({n} games).",
+    ),
+    "color": (
+        "Your {weak} repertoire needs work",
+        "You score {w} as White and {b} as Black.",
+    ),
+}
+
+
+def _insight(key: str, **params: object) -> Dict[str, object]:
+    title, detail = TEMPLATES[key]
+    return {"key": key, "params": params, "title": title.format(**params), "detail": detail.format(**params)}
+
+
+def _pct(x: float) -> str:
+    return f"{x:.0%}"
+
+
+def generate_insights(g: pd.DataFrame, min_n: int = 8) -> List[Dict[str, object]]:
+    """Rule-based, evidence-backed findings, most actionable first. No LLM involved.
+
+    Each item has ``key``, ``params`` (strings ready to format) and English ``title``/``detail``.
+    """
+    found: List[Dict[str, object]] = []
     if len(g) < 20:
         return found
 
     t = tilt_profile(g, min_n)
     if t["stop_loss_after"]:
-        row = t["table"][t["table"]["bucket"] == ("3+" if t["stop_loss_after"] >= 3 else str(t["stop_loss_after"]))].iloc[0]
-        found.append({
-            "key": "stop_loss",
-            "title": f"Your personal stop-loss: quit the session after {t['stop_loss_after']} loss"
-                     + ("es in a row" if t["stop_loss_after"] > 1 else ""),
-            "detail": f"After {t['stop_loss_after']}{'+' if t['stop_loss_after'] >= 3 else ''} straight loss(es) in a session your score drops to "
-                      f"{row['score']:.0%} (vs {t['baseline']:.0%} overall, {int(row['games'])} games).",
-        })
+        n = int(t["stop_loss_after"])
+        row = t["table"][t["table"]["bucket"] == ("3+" if n >= 3 else str(n))].iloc[0]
+        found.append(_insight(
+            "stop_loss", n=n, es="es" if n > 1 else "", plus="+" if n >= 3 else "",
+            score=_pct(row["score"]), baseline=_pct(t["baseline"]), games=int(row["games"]),
+        ))
 
     # One pre-planned comparison (first game of a session vs the rest) instead of picking
     # the best of several buckets, which would produce false positives.
@@ -262,55 +305,31 @@ def generate_insights(g: pd.DataFrame, min_n: int = 8) -> List[Dict[str, str]]:
     if len(first) >= min_n and len(rest) >= min_n:
         f, r = float(first["score"].mean()), float(rest["score"].mean())
         if r - f >= 0.08 and _significant(len(first), f, len(rest), r):
-            found.append({
-                "key": "warmup",
-                "title": "You start sessions cold: your first game is your weakest",
-                "detail": f"You score {f:.0%} in the first game of a session vs {r:.0%} in the rest ({len(first)} sessions). Try a warm-up game or a few puzzles first.",
-            })
+            found.append(_insight("warmup", first=_pct(f), rest=_pct(r), n=len(first)))
 
     c = clock_profile(g)
     if c:
         if c["scramble_n"] >= min_n and c["scramble_score"] + 0.10 <= c["no_scramble_score"] \
                 and _significant(c["scramble_n"], c["scramble_score"], c["games"] - c["scramble_n"], c["no_scramble_score"]):
-            found.append({
-                "key": "scramble",
-                "title": f"Time scrambles cost you: {c['scramble_rate']:.0%} of games end with almost no time",
-                "detail": f"When you are in a scramble you score {c['scramble_score']:.0%} vs {c['no_scramble_score']:.0%} otherwise ({c['scramble_n']} games).",
-            })
+            found.append(_insight("scramble", rate=_pct(c["scramble_rate"]), score=_pct(c["scramble_score"]),
+                                  other=_pct(c["no_scramble_score"]), n=c["scramble_n"]))
         if c["burn_n"] >= min_n and c["calm_n"] >= min_n and c["burn_score"] + 0.08 <= c["calm_score"] \
                 and _significant(c["burn_n"], c["burn_score"], c["calm_n"], c["calm_score"]):
-            found.append({
-                "key": "early_burn",
-                "title": "You spend too much clock early in the game",
-                "detail": f"When you have under 70% of your time left after move 15 you score {c['burn_score']:.0%} vs {c['calm_score']:.0%} ({c['burn_n']} games).",
-            })
+            found.append(_insight("early_burn", burn=_pct(c["burn_score"]), calm=_pct(c["calm_score"]), n=c["burn_n"]))
         if c["timeout_losses"] >= 5 and c["timeout_loss_share"] >= 0.25:
-            found.append({
-                "key": "timeouts",
-                "title": f"{c['timeout_loss_share']:.0%} of your losses are on time",
-                "detail": f"{c['timeout_losses']} games lost on the clock vs {c['timeout_wins']} won that way. Consider an increment time control.",
-            })
+            found.append(_insight("timeouts", share=_pct(c["timeout_loss_share"]), losses=c["timeout_losses"], wins=c["timeout_wins"]))
 
     low = g[g["rating_diff"] <= -30].dropna(subset=["rating_diff"])
     if len(low) >= min_n:
         expected = float((1.0 / (1.0 + 10 ** (low["opp_rating"] - low["user_rating"]).div(400))).mean())
         actual = float(low["score"].mean())
         if actual <= expected - 0.08 and _significant(len(low), actual, len(low), expected):
-            found.append({
-                "key": "lower_rated",
-                "title": "You underperform against lower-rated opponents",
-                "detail": f"Against opponents rated 30+ below you, ratings predict {expected:.0%} but you score {actual:.0%} ({len(low)} games).",
-            })
+            found.append(_insight("lower_rated", expected=_pct(expected), actual=_pct(actual), n=len(low)))
 
     col = color_profile(g)
     if len(col) == 2 and (col["games"] >= min_n).all():
-        w, b = col.set_index("user_color").loc["white", "score"], col.set_index("user_color").loc["black", "score"]
-        n_w, n_b = int(col.set_index("user_color").loc["white", "games"]), int(col.set_index("user_color").loc["black", "games"])
-        if abs(w - b) >= 0.12 and _significant(n_w, w, n_b, b):
-            weak = "Black" if b < w else "White"
-            found.append({
-                "key": "color",
-                "title": f"Your {weak} repertoire needs work",
-                "detail": f"You score {w:.0%} as White and {b:.0%} as Black.",
-            })
+        idx = col.set_index("user_color")
+        w, b = float(idx.loc["white", "score"]), float(idx.loc["black", "score"])
+        if abs(w - b) >= 0.12 and _significant(int(idx.loc["white", "games"]), w, int(idx.loc["black", "games"]), b):
+            found.append(_insight("color", weak="Black" if b < w else "White", w=_pct(w), b=_pct(b)))
     return found

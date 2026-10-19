@@ -1,0 +1,44 @@
+﻿# Klimate
+
+Chess psychology analytics for Chess.com players: find *when*, *how* and *why* you lose points.
+Live app: https://klimate.streamlit.app/
+
+## Features
+- **Overview, Cognitive Clock, Spatial Analysis, Strategic Blindspots** – results by time of day, board heat maps, weakest openings with an AI masterclass.
+- **Behavior Lab** – sessions, tilt and your personal stop-loss rule, warm-up effect, opponent strength, colour.
+- **Time Management** – clock use from the PGN (scrambles, early time burn, flagging).
+- **Coach Report** – Stockfish on your last games: accuracy, blunder/mistake/inaccuracy, weakest phase, error types, AI summary.
+- **Progress** – rating and score trends with goals saved in the page address.
+- **Training Plan** – a weekly plan built from your own findings with free Lichess exercises.
+- **Compare** – your habits next to another player's.
+- **Wrapped** – shareable card (copy text or download PNG), grandmaster match from your real playing style.
+- English and Hebrew (navigation, landing page, new pages and insight cards).
+
+Insights only appear when the difference is larger than chance would explain ("no reliable pattern" is a valid result).
+
+## Run locally
+```bash
+pip install -r requirements.txt
+streamlit run KLIMATEapp.py
+```
+Optional: install [Stockfish](https://stockfishchess.org/) (or set `STOCKFISH_PATH`) for the Coach Report and fast Engine Deep Dive; on Streamlit Cloud it comes from `packages.txt`. Without it the app falls back to the chess-api.com web service for single-game analysis.
+
+Secrets (`.streamlit/secrets.toml`, or Streamlit Cloud → Secrets) for the AI coach: `GEMINI_API_KEY`, optional `GROQ_API_KEY`.
+Set `KLIMATE_GA_DISABLED=1` to stop sending Google Analytics events during development.
+
+## Tests
+```bash
+pip install -r requirements-dev.txt
+pytest tests
+```
+
+## Layout
+| File | Role |
+|---|---|
+| `KLIMATEapp.py` | entry point: routing, sidebar, filters |
+| `ui_*.py`, `views_*.py` | pages |
+| `insights.py`, `analysis.py`, `training.py`, `style.py`, `openings.py` | pure analysis code (no Streamlit) |
+| `analytics.py`, `coach.py`, `llm.py`, `data_engine.py` | engine, LLM and Chess.com access |
+| `i18n.py`, `ga.py`, `share_card.py` | translations, Google Analytics events, PNG card |
+
+Data comes from the public Chess.com API (read-only, requests are serial, closed months are cached on disk).
