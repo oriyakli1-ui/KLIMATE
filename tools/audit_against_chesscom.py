@@ -138,25 +138,42 @@ def main(user: str, months: int = 6) -> int:
     check("games without an opening name", ours.get("Unknown", 0), fam.get("Unknown", 0))
     check("distinct opening families <= distinct ECO slugs", len(ours) <= len(set(x.get("eco") for x in games)) + 1, True)
 
-    # ---- performance rating by brute force over ratings 0..3500
-    for tc in ("rapid", "blitz", "bullet"):
-        rows = []
-        for x in games:
-            if x["time_class"] != tc or not x.get("rated"):
-                continue
-            side = "white" if x["white"]["username"].lower() == me else "black"
-            opp = x["black" if side == "white" else "white"]["rating"]
-            res = x[side]["result"]
-            rows.append((opp, 1.0 if res == "win" else (0.5 if res in DRAWS else 0.0)))
-        if len(rows) < 20:
+    # ---- ratings: Chess.com publishes every rating AFTER the game. Rebuild the rating change of each
+    # game (this rating minus the previous one in the same pool), the pre-game ratings and the
+    # performance rating with plain loops, and compare with the app's enriched frame / ledger.
+    pools = collections.defaultdict(list)
+    for x in games:
+        if not x.get("rated"):
             continue
-        total = sum(sc for _, sc in rows)
-        avg = sum(o for o, _ in rows) / len(rows)
-        best = min(range(int(avg) - 800, int(avg) + 801),
-                   key=lambda r: abs(sum(1 / (1 + 10 ** ((o - r) / 400)) for o, _ in rows) - total))
-        sub = g[(g["time_class"] == tc) & g["rated"]]
-        ours_r = metrics.performance_rating(sub["opp_rating"].to_numpy(), float(sub["score"].sum()))
-        check(f"performance rating {tc}", round(ours_r), best, 1)
+        side = "white" if x["white"]["username"].lower() == me else "black"
+        opp = "black" if side == "white" else "white"
+        res = x[side]["result"]
+        pools[x["time_class"]].append((x["end_time"], x[side]["rating"], x[opp]["rating"], 1.0 if res == "win" else (0.5 if res in DRAWS else 0.0)))
+    all_valid = []
+    for tc, lst in pools.items():
+        lst.sort()
+        valid = []
+        for i in range(1, len(lst)):
+            ch = lst[i][1] - lst[i - 1][1]
+            sc = lst[i][3]
+            ok = abs(ch) <= 45 and ((sc == 1.0 and ch >= 0) or (sc == 0.0 and ch <= 0) or (sc == 0.5 and abs(ch) <= 25))
+            if ok:
+                valid.append((lst[i][2] + ch, sc, ch))      # (opponent rating before the game, score, change)
+        all_valid += [v[2] for v in valid]
+        if len(valid) >= 20:
+            total = sum(sc for _, sc, _ in valid)
+            avg = sum(o for o, _, _ in valid) / len(valid)
+            best = min(range(int(avg) - 800, int(avg) + 801),
+                       key=lambda r: abs(sum(1 / (1 + 10 ** ((o - r) / 400)) for o, _, _ in valid) - total))
+            sub = g[(g["time_class"] == tc) & g["rated"] & g["rating_change"].notna()]
+            check(f"games with a measured rating change {tc}", len(sub), len(valid))
+            ours_r = metrics.performance_rating(sub["opp_rating"].to_numpy(), float(sub["score"].sum()))
+            check(f"performance rating {tc}", round(ours_r), best, 1)
+    import ledger  # noqa: E402
+
+    summ = ledger.ledger(g)["summary"]
+    check("ledger: usable games", summ["usable_games"], len(all_valid))
+    check("ledger: net rating points", round(summ["net_points"], 6), float(sum(all_valid)))
 
     # ---- live ratings and all-time best
     stats = data_engine._safe_get(f"https://api.chess.com/pub/player/{me}/stats")

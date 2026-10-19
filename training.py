@@ -34,6 +34,8 @@ def build_plan(
     insights_list: List[Dict[str, str]],
     patterns: Optional[Dict[str, pd.DataFrame]] = None,
     openings: Optional[pd.DataFrame] = None,
+    opening_report: Optional[pd.DataFrame] = None,
+    ledger_table: Optional[pd.DataFrame] = None,
 ) -> List[Dict[str, str]]:
     """Up to seven actionable items, most evidence-backed first, padded with solid habits."""
     items: List[Dict[str, str]] = []
@@ -66,6 +68,22 @@ def build_plan(
                 "detail": f"You score {r.score:.0%} over {int(r.games)} games with it. Study the main line and one model game, then play it deliberately.",
                 "link": LICHESS_OPENING + str(r.opening).replace(" ", "_"),
                 "tag": "opening",
+            })
+    if opening_report is not None and not opening_report.empty:
+        for r in opening_report[opening_report["verdict"].str.startswith("Opening problem")].head(2).itertuples():
+            items.append({
+                "title": f"Fix your {r.opening} as {r.color}",
+                "detail": f"After move 10 you average {r.eval:+.2f} pawns over {r.games} games (worse than your other openings). "
+                          "Replay your last games with it and find the move where you first leave known ideas, then study that line.",
+                "link": LICHESS_OPENING + str(r.opening).replace(" ", "_"), "tag": "opening",
+            })
+    if ledger_table is not None and not ledger_table.empty:
+        for r in ledger_table[ledger_table["reliable"] & (ledger_table["difference"] < 0)].head(1).itertuples():
+            items.append({
+                "title": "Stop the biggest rating leak",
+                "detail": f"{r.situation}: {r.difference:+.2f} rating points per game versus your other games ({r.games} games). "
+                          "Decide a rule for this situation before you play, for example a break or a different time control.",
+                "link": "", "tag": "habit",
             })
     if "warmup" in keys:
         items.append({"title": "Warm up first", "detail": keys["warmup"]["detail"], "link": LICHESS_THEME + "mix", "tag": "habit"})

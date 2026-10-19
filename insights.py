@@ -37,7 +37,7 @@ def user_clocks(pgn: object, is_white: bool) -> List[float]:
 def enrich_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
     """One row per game of ``username``, oldest first, with user-perspective columns."""
     cols = [
-        "date_utc", "start_utc", "rated", "user_color", "user_rating", "opp_rating", "rating_diff", "user_result",
+        "date_utc", "start_utc", "rated", "user_color", "user_rating", "rating_after", "rating_change", "opp_rating", "rating_diff", "user_result",
         "opp_result", "score", "outcome", "time_class", "base_seconds", "inc_seconds", "opening",
         "session_id", "session_game_no", "losses_before", "user_moves", "final_clock",
         "avg_move_seconds", "clock_after_15_pct", "scramble", "lost_on_time", "won_on_time",
@@ -87,6 +87,22 @@ def enrich_games(df: pd.DataFrame, username: str) -> pd.DataFrame:
     out = out.sort_values(["_start_eff", "date_utc"], kind="stable").reset_index(drop=True)
     pgn = out.pop("_pgn")
     white_sorted = out.pop("_white")
+
+    # --- ratings. Chess.com publishes every rating AFTER the game (for both players), so
+    # the change a game caused is this rating minus the previous one in the same rating pool,
+    # and the pre-game ratings follow from it. Anything that could not be reconstructed
+    # reliably (first game of a pool, an unseen game in between) is left NaN, not guessed.
+    out["rating_after"] = out["user_rating"]
+    out["rating_change"] = np.nan
+    for _, idx in out[out["rated"] & out["rating_after"].notna()].groupby("time_class").groups.items():
+        pool = out.loc[idx].sort_values("date_utc")
+        out.loc[pool.index, "rating_change"] = (pool["rating_after"] - pool["rating_after"].shift(1)).to_numpy()
+    ch, sc = out["rating_change"], out["score"]
+    consistent = ((sc == 1.0) & (ch >= 0)) | ((sc == 0.0) & (ch <= 0)) | ((sc == 0.5) & (ch.abs() <= 25))
+    out["rating_change"] = ch.where(ch.notna() & (ch.abs() <= 45) & consistent)
+    out["user_rating"] = out["rating_after"] - out["rating_change"]            # rating before the game
+    out["opp_rating"] = out["opp_rating"] + out["rating_change"]               # opponent before the game (~ moved by -change)
+    out["rating_diff"] = out["opp_rating"] - out["user_rating"]
 
     # --- sessions: a new session starts when the idle time between one game's end and the
     # next game's start exceeds SESSION_GAP_MINUTES. (End-to-end gaps would wrongly split a
@@ -348,7 +364,7 @@ def opening_summary(g: pd.DataFrame, min_games: int = 1) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols).sort_values("games", ascending=False).reset_index(drop=True)
 
 
-# English templates; i18n.py holds translations keyed the same way.
+# English templates for the insight cards.
 TEMPLATES = {
     "stop_loss": (
         "Your personal stop-loss: quit the session after {n} loss{es} in a row",
