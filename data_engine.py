@@ -13,6 +13,25 @@ USER_AGENT_HEADER: Dict[str, str] = {
 }
 
 
+COLUMNS: List[str] = [
+    "date_utc",
+    "white_player",
+    "black_player",
+    "white_rating",
+    "black_rating",
+    "white_result",
+    "black_result",
+    "time_class",
+    "eco",
+    "opening",
+    "pgn",
+    "time_control",
+    "rated",
+    "rules",
+    "url",
+]
+
+
 class ChessComAPIError(Exception):
     """Custom exception for Chess.com API related errors."""
 
@@ -102,11 +121,15 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "eco": eco,
         "opening": opening,
         "pgn": pgn,
+        "time_control": game.get("time_control", ""),
+        "rated": bool(game.get("rated", False)),
+        "rules": game.get("rules", "chess"),
+        "url": game.get("url", ""),
     }
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
+def fetch_player_games(username: str, max_games: int = 200, months: int = 3) -> pd.DataFrame:
     """
     Fetch a player's most recent games from the Chess.com public API.
 
@@ -120,6 +143,8 @@ def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
         Chess.com username (case-insensitive).
     max_games : int, optional
         Maximum number of games to retrieve, by default 200.
+    months : int, optional
+        How many of the most recent monthly archives to read, by default 3.
 
     Returns
     -------
@@ -146,6 +171,8 @@ def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
     """
     if max_games <= 0:
         raise ValueError("max_games must be a positive integer")
+    if months < 0:
+        raise ValueError("months must be >= 0 (0 means all archives)")
 
     username = username.strip().lower()
     if not username:
@@ -157,27 +184,13 @@ def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
     archive_urls: List[str] = data.get("archives", [])
     if not archive_urls:
         # No archives / no games for this user.
-        return pd.DataFrame(
-            columns=[
-                "date_utc",
-                "white_player",
-                "black_player",
-                "white_rating",
-                "black_rating",
-                "white_result",
-                "black_result",
-                "time_class",
-                "eco",
-                "opening",
-                "pgn",
-            ]
-        )
+        return pd.DataFrame(columns=COLUMNS)
 
     collected_games: List[Dict[str, Any]] = []
 
     # Iterate from the most recent few months backwards to avoid fetching
     # the entire historical archive (performance safeguard).
-    recent_archives = archive_urls[-3:] if len(archive_urls) > 3 else archive_urls
+    recent_archives = archive_urls[-months:] if months > 0 else archive_urls
     for month_url in reversed(recent_archives):
         if len(collected_games) >= max_games:
             break
@@ -196,21 +209,7 @@ def fetch_player_games(username: str, max_games: int = 200) -> pd.DataFrame:
                 collected_games.append(parsed)
 
     if not collected_games:
-        return pd.DataFrame(
-            columns=[
-                "date_utc",
-                "white_player",
-                "black_player",
-                "white_rating",
-                "black_rating",
-                "white_result",
-                "black_result",
-                "time_class",
-                "eco",
-                "opening",
-                "pgn",
-            ]
-        )
+        return pd.DataFrame(columns=COLUMNS)
 
     df = pd.DataFrame(collected_games)
 
