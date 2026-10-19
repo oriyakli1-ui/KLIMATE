@@ -1,7 +1,7 @@
 """Overview and Cognitive Clock pages. Every number comes from insights.py / metrics.py."""
 from __future__ import annotations
 
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
@@ -129,11 +129,15 @@ def render_overview_page(g, username: str) -> None:
         st.info("Not enough data to analyze openings yet.")
         return
     top = ops.head(10)
-    fig = px.bar(top, x="opening", y="games", color="score", color_continuous_scale=["#0EA5E9", "#22C55E"],
-                 labels={"opening": "Opening", "games": "Games", "score": "Score"}, custom_data=["lo", "hi"])
-    fig.update_traces(hovertemplate="%{x}<br>%{y} games<br>score %{marker.color:.0%} (95%: %{customdata[0]:.0%} to %{customdata[1]:.0%})<extra></extra>")
+    fig = go.Figure(go.Bar(
+        x=top["opening"], y=top["games"],
+        marker=dict(color=top["score"], colorscale=["#0EA5E9", "#22C55E"], cmin=0.3, cmax=0.7,
+                    colorbar=dict(title="Score", tickformat=".0%")),
+        customdata=np.stack([top["score"], top["lo"], top["hi"]], axis=-1),
+        hovertemplate="%{x}<br>%{y} games<br>score %{customdata[0]:.0%} (95%: %{customdata[1]:.0%} to %{customdata[2]:.0%})<extra></extra>",
+    ))
     fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#E5E7EB"),
-                      margin=dict(l=20, r=20, t=30, b=20), coloraxis_colorbar=dict(title="Score", tickformat=".0%"))
+                      margin=dict(l=20, r=20, t=30, b=20), xaxis_title="Opening", yaxis_title="Games")
     fig.update_yaxes(gridcolor="rgba(148,163,184,0.25)")
     st.markdown('<div class="klimate-card-plot">', unsafe_allow_html=True)
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
