@@ -119,6 +119,8 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     # Chess.com sends the opening as an ECO URL. ``opening`` is the family (big enough
     # samples to analyse), ``opening_variation`` the full name.
     opening_variation, opening = parse_eco_url(eco)
+    opening = opening or "Unknown"
+    opening_variation = opening_variation or "Unknown"
 
     time_class = game.get("time_class", "")
     pgn = game.get("pgn", "")

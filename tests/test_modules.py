@@ -111,3 +111,16 @@ def test_fetch_games_reports_progress_and_respects_months(monkeypatch, tmp_path)
     calls = []
     df = data_engine.fetch_games("Bob", max_games=10, months=2, progress=lambda d, t: calls.append((d, t)))
     assert len(df) == 2 and calls == [(1, 2), (2, 2)]
+
+
+def test_undefined_opening_is_not_an_opening():
+    assert openings.parse_eco_url("https://www.chess.com/openings/Undefined") == ("", "")
+    raw = {"white": {"username": "A", "rating": 1, "result": "win"}, "black": {"username": "B", "rating": 1, "result": "resigned"},
+           "end_time": 1700000000, "eco": "https://www.chess.com/openings/Undefined", "pgn": "1. e4"}
+    assert data_engine._parse_game(raw)["opening"] == "Unknown"
+
+
+def test_unknown_opening_never_ranks(games_factory):
+    df = games_factory(["win"] * 6)
+    df["opening"] = "Unknown"
+    assert analytics.analyze_openings(df, "me").empty

@@ -31,6 +31,7 @@ _SUFFIX_WORDS = {"Accepted", "Declined", "Refused"}
 # Pool entries and the old display names carry no apostrophes ("Queens Gambit"), keep that.
 _ALIASES = {"Petrovs Defense": "Petrov Defense"}
 _FIRST_MOVE = re.compile(r"-\d+\.")
+_UNKNOWN = {"undefined", "unknown", "null", "none"}
 
 
 def _pretty(words: list[str]) -> str:
@@ -43,6 +44,8 @@ def parse_eco_url(url: object) -> Tuple[str, str]:
     if not s:
         return "", ""
     slug = s.rsplit("/", 1)[-1]
+    if slug.lower() in _UNKNOWN:  # Chess.com literally sends ".../openings/Undefined" for unrecognised openings
+        return "", ""
     m = _FIRST_MOVE.search(slug)
     if m:
         slug = slug[: m.start()]

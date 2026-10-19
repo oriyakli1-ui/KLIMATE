@@ -127,6 +127,7 @@ def render_strategic_blindspots(games_df: pd.DataFrame, username: str) -> None:
     opening_key = opening_series.where(opening_series.str.len() > 0, eco_series)
     opening_key = opening_key.replace("", "Unknown")
     df["opening_key"] = opening_key
+    df = df[df["opening_key"] != "Unknown"]
 
     # Aggregate results per opening
     agg = (
