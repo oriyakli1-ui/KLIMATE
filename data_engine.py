@@ -168,12 +168,11 @@ def _month_games(month_url: str, username: str) -> List[Dict[str, Any]]:
     return games
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def fetch_player_games(
+def fetch_games(
     username: str,
     max_games: int = 200,
     months: int = 3,
-    _progress: Optional[Callable[[int, int], None]] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
 ) -> pd.DataFrame:
     """
     Fetch a player's most recent games from the Chess.com public API.
@@ -190,8 +189,9 @@ def fetch_player_games(
         Maximum number of games to retrieve, by default 200.
     months : int, optional
         How many of the most recent monthly archives to read, by default 3.
-    _progress : callable, optional
-        ``_progress(done, total)`` after each monthly archive (not part of the cache key).
+    progress : callable, optional
+        ``progress(done, total)`` after each monthly archive. Not usable inside a Streamlit cache
+        (it may draw elements), hence the cached wrapper below has no such argument.
 
     Returns
     -------
@@ -243,8 +243,8 @@ def fetch_player_games(
             break
 
         month_games = _month_games(month_url, username)
-        if _progress:
-            _progress(done, len(recent_archives))
+        if progress:
+            progress(done, len(recent_archives))
 
         # Games in the archive are generally in chronological order;
         # we want the most recent games first overall, so iterate reversed.
@@ -268,6 +268,12 @@ def fetch_player_games(
     df = df.sort_values("date_utc", ascending=False).reset_index(drop=True)
 
     return df
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def fetch_player_games(username: str, max_games: int = 200, months: int = 3) -> pd.DataFrame:
+    """Cached ``fetch_games`` for callers that do not need progress reporting."""
+    return fetch_games(username, max_games, months)
 
 
 if __name__ == "__main__":

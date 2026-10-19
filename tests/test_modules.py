@@ -96,3 +96,18 @@ def test_style_profile_and_match():
     assert prof["games"] == 3 and prof["avg_moves"] == 4 and prof["action_rate"] == 0.25
     assert style.match_archetype(prof)[0] == "Hikaru Nakamura"  # short games, moderate action
     assert style.match_archetype({"games": 0})[0].startswith("Unknown")
+
+
+def test_fetch_games_reports_progress_and_respects_months(monkeypatch, tmp_path):
+    monkeypatch.setattr(data_engine, "CACHE_DIR", tmp_path)
+    game = {"white": {"username": "A", "rating": 1, "result": "win"}, "black": {"username": "B", "rating": 1, "result": "resigned"},
+            "end_time": 1700000000, "pgn": "1. e4"}
+    archives = [f"https://api.chess.com/pub/player/bob/games/2020/{m:02d}" for m in (1, 2, 3)]
+
+    def fake_get(url):
+        return {"archives": archives} if url.endswith("/archives") else {"games": [game]}
+
+    monkeypatch.setattr(data_engine, "_safe_get", fake_get)
+    calls = []
+    df = data_engine.fetch_games("Bob", max_games=10, months=2, progress=lambda d, t: calls.append((d, t)))
+    assert len(df) == 2 and calls == [(1, 2), (2, 2)]
