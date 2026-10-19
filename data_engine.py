@@ -1,16 +1,27 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, Dict, List, Optional
+import json
+import os
+import re
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 import requests
 import streamlit as st
 
+from openings import parse_eco_url
 
+
+# Chess.com asks for a recognisable User-Agent with a way to reach the developer.
 USER_AGENT_HEADER: Dict[str, str] = {
-    "User-Agent": "Klimate Chess Analytics - Student Project"
+    "User-Agent": "Klimate Chess Analytics/1.0 (+https://github.com/oriyakli1-ui/KLIMATE)"
 }
+
+# Finished months never change, so they are cached on disk and fetched only once.
+CACHE_DIR = Path(os.environ.get("KLIMATE_CACHE_DIR", Path(__file__).parent / ".cache"))
+_MONTH_RE = re.compile(r"/games/(\d{4})/(\d{2})$")
 
 
 COLUMNS: List[str] = [
@@ -24,6 +35,7 @@ COLUMNS: List[str] = [
     "time_class",
     "eco",
     "opening",
+    "opening_variation",
     "pgn",
     "time_control",
     "rated",
@@ -104,7 +116,9 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     # Prefer ECO/Opening if provided; otherwise empty string.
     eco = game.get("eco", "")
-    opening = game.get("opening", "")
+    # Chess.com sends the opening as an ECO URL. ``opening`` is the family (big enough
+    # samples to analyse), ``opening_variation`` the full name.
+    opening_variation, opening = parse_eco_url(eco)
 
     time_class = game.get("time_class", "")
     pgn = game.get("pgn", "")
@@ -120,6 +134,7 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "time_class": time_class,
         "eco": eco,
         "opening": opening,
+        "opening_variation": opening_variation,
         "pgn": pgn,
         "time_control": game.get("time_control", ""),
         "rated": bool(game.get("rated", False)),
@@ -128,8 +143,38 @@ def _parse_game(game: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+def _month_games(month_url: str, username: str) -> List[Dict[str, Any]]:
+    """Raw games of one monthly archive; closed months come from (and go to) the disk cache."""
+    m = _MONTH_RE.search(month_url)
+    closed = False
+    path: Optional[Path] = None
+    if m:
+        year, month = int(m.group(1)), int(m.group(2))
+        now = dt.datetime.now(dt.timezone.utc)
+        closed = (year, month) < (now.year, now.month)
+        path = CACHE_DIR / username / f"{year}-{month:02d}.json"
+    if closed and path is not None and path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass  # corrupt cache file: fall through and refetch
+    games = _safe_get(month_url).get("games", [])
+    if closed and path is not None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(games), encoding="utf-8")
+        except OSError:
+            pass  # read-only filesystem: caching is an optimisation only
+    return games
+
+
 @st.cache_data(show_spinner=False, ttl=300)
-def fetch_player_games(username: str, max_games: int = 200, months: int = 3) -> pd.DataFrame:
+def fetch_player_games(
+    username: str,
+    max_games: int = 200,
+    months: int = 3,
+    _progress: Optional[Callable[[int, int], None]] = None,
+) -> pd.DataFrame:
     """
     Fetch a player's most recent games from the Chess.com public API.
 
@@ -145,6 +190,8 @@ def fetch_player_games(username: str, max_games: int = 200, months: int = 3) -> 
         Maximum number of games to retrieve, by default 200.
     months : int, optional
         How many of the most recent monthly archives to read, by default 3.
+    _progress : callable, optional
+        ``_progress(done, total)`` after each monthly archive (not part of the cache key).
 
     Returns
     -------
@@ -191,12 +238,13 @@ def fetch_player_games(username: str, max_games: int = 200, months: int = 3) -> 
     # Iterate from the most recent few months backwards to avoid fetching
     # the entire historical archive (performance safeguard).
     recent_archives = archive_urls[-months:] if months > 0 else archive_urls
-    for month_url in reversed(recent_archives):
+    for done, month_url in enumerate(reversed(recent_archives), start=1):
         if len(collected_games) >= max_games:
             break
 
-        month_data = _safe_get(month_url)
-        month_games = month_data.get("games", [])
+        month_games = _month_games(month_url, username)
+        if _progress:
+            _progress(done, len(recent_archives))
 
         # Games in the archive are generally in chronological order;
         # we want the most recent games first overall, so iterate reversed.
