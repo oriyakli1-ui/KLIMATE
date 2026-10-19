@@ -25,8 +25,17 @@ def _gemini(prompt: str, max_tokens: int) -> str:
     resp = client.models.generate_content(
         model=GEMINI_MODEL,
         contents=prompt,
-        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, max_output_tokens=max_tokens),
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            # Gemini 2.5 "thinking" tokens count against max_output_tokens and can eat the whole
+            # budget, leaving a sentence cut in half. These are short answers: no thinking.
+            max_output_tokens=max(max_tokens, 800),
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
+    candidates = getattr(resp, "candidates", None) or []
+    if candidates and "MAX_TOKENS" in str(getattr(candidates[0], "finish_reason", "")):
+        raise LLMUnavailable("Gemini answer was cut off")  # triggers the Groq fallback
     text = (resp.text or "").strip()
     if not text:
         raise LLMUnavailable("Gemini returned no text")
