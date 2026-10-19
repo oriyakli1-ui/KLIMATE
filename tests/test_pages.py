@@ -7,10 +7,19 @@ from streamlit.testing.v1 import AppTest
 import analysis
 import insights
 import wrapped
+import analytics
 from tests.conftest import make_games
 
 PGN = ('[White "me"]\n[Black "opp"]\n\n1. e4 {[%clk 0:09:58.0]} e5 {[%clk 0:09:57.0]} 2. Nf3 {[%clk 0:09:50.0]} Nc6 {[%clk 0:09:40.0]} '
        '3. Bb5 {[%clk 0:09:30.0]} a6 {[%clk 0:09:20.0]} 4. Ba4 {[%clk 0:09:10.0]} Nf6 {[%clk 0:09:00.0]} 1-0')
+
+
+@pytest.fixture(autouse=True)
+def _restore_module_state():
+    """The page scripts monkeypatch module attributes; undo that so other tests see the real ones."""
+    saved = (analytics._find_stockfish, analytics.get_real_time_ratings)
+    yield
+    analytics._find_stockfish, analytics.get_real_time_ratings = saved
 
 
 def _games(n=120, seed=1):
@@ -62,7 +71,7 @@ def test_overview_page(monkeypatch):
     assert "Score" in text and "Performance Rating" in text
 
 
-@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress"])
+@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck"])
 def test_other_pages(which):
     def page():
         import analytics
@@ -89,6 +98,26 @@ def test_other_pages(which):
             views_coach.render_training_plan(g, "me")
         elif which_page == "progress":
             views_coach.render_progress(g, "me")
+        elif which_page == "ledger":
+            import views_features
+
+            views_features.render_elo_ledger(g, "UTC")
+        elif which_page == "playnow":
+            import views_features
+
+            views_features.render_play_now(g, "me", "UTC", lambda: None)
+        elif which_page == "openingcheck":
+            import numpy as np
+            import opening_eval
+            import pandas as pd
+            import views_features
+
+            analytics._find_stockfish = lambda: "no-such-engine"      # the page renders; the button is not pressed
+            rng = np.random.default_rng(0)
+            data = pd.DataFrame({"opening": rng.choice(["A", "B"], 80), "color": rng.choice(["White", "Black"], 80),
+                                 "score": rng.choice([0.0, 1.0], 80), "eval": rng.normal(0, 0.5, 80)})
+            st.session_state["opening_eval"] = {"user": "me", "data": data}
+            views_features.render_opening_check(g, "me")
 
     at = AppTest.from_function(page, default_timeout=60)
     at.session_state["which"] = which

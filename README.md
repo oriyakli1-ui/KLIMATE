@@ -5,6 +5,9 @@ Live app: https://klimate.streamlit.app/
 
 ## Features
 - **Overview, Cognitive Clock, Spatial Analysis, Strategic Blindspots** – results by time of day, board heat maps, weakest openings with an AI masterclass.
+- **Elo Ledger** – what each habit (after a loss, first game, late in a session, time scrambles, night games) costs or earns in *measured* Chess.com rating points, with significance.
+- **Play Now** – a traffic light for starting another game right now, judged by your own history in the same situation.
+- **Opening Check** – Stockfish evaluation after move 10 for every opening and colour: separates opening trouble from later-game trouble.
 - **Behavior Lab** – sessions, tilt and your personal stop-loss rule, warm-up effect, opponent strength, colour.
 - **Time Management** – clock use from the PGN (scrambles, early time burn, flagging).
 - **Coach Report** – Stockfish on your last games: accuracy, blunder/mistake/inaccuracy, weakest phase, error types, AI summary.
@@ -12,7 +15,6 @@ Live app: https://klimate.streamlit.app/
 - **Training Plan** – a weekly plan built from your own findings with free Lichess exercises.
 - **Compare** – your habits next to another player's.
 - **Wrapped** – shareable card (copy text or download PNG), grandmaster match from your real playing style.
-- English and Hebrew (navigation, landing page, new pages and insight cards).
 
 Insights only appear when the difference is larger than chance would explain ("no reliable pattern" is a valid result).
 
@@ -42,6 +44,6 @@ pytest tests
 | `ui_*.py`, `views_*.py` | pages |
 | `metrics.py`, `insights.py`, `analysis.py`, `spatial.py`, `wrapped.py`, `training.py`, `style.py`, `openings.py` | pure analysis code (no Streamlit) |
 | `analytics.py`, `coach.py`, `llm.py`, `data_engine.py` | engine, LLM and Chess.com access |
-| `i18n.py`, `ga.py`, `share_card.py` | translations, Google Analytics events, PNG card |
+| `strings.py`, `ga.py`, `share_card.py` | UI strings, Google Analytics events, PNG card |
 
 Data comes from the public Chess.com API (read-only, requests are serial, closed months are cached on disk).

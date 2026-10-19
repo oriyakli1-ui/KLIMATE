@@ -4,10 +4,10 @@ import types
 import pandas as pd
 
 import data_engine
-import i18n
 import insights
 import openings
 import share_card
+import strings
 import style
 import training
 
@@ -68,16 +68,12 @@ def test_training_plan_has_seven_days_and_uses_evidence(games_factory):
     assert len(training.build_plan([], None, None)) == 7
 
 
-def test_i18n_falls_back_and_translates_insights(monkeypatch):
-    fake = types.SimpleNamespace(session_state={"lang": "he"})
-    monkeypatch.setattr(i18n, "st", fake)
-    assert i18n.t("analyze") == "נתח את ה-DNA"
-    assert i18n.t("missing_key") == "missing_key"
-    item = {"key": "stop_loss", "params": {"n": 1, "es": "", "plus": "", "score": "30%", "baseline": "50%", "games": 40},
-            "title": "en", "detail": "en"}
-    assert "הפסד אחד" in i18n.insight_text(item)["title"]
-    fake.session_state["lang"] = "en"
-    assert i18n.insight_text(item)["title"] == "en"
+def test_strings_format_and_fall_back():
+    assert strings.t("analyze") == "Analyze DNA"
+    assert strings.t("missing_key") == "missing_key"
+    assert strings.t("games_loaded", n=5) == "5 games loaded"
+    item = {"key": "x", "params": {}, "title": "T", "detail": "D"}
+    assert strings.insight_text(item) == {"title": "T", "detail": "D"}
 
 
 def test_share_card_is_a_png():

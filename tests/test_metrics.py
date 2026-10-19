@@ -75,8 +75,8 @@ def test_performance_summary_never_mixes_time_classes(games_factory):
     df = games_factory(["win", "loss"] * 20)
     df.loc[df.index[:10], "time_class"] = "blitz"
     p = I.performance_summary(I.enrich_games(df, "me"))
-    assert p["time_class"] == "rapid" and p["n"] == 30 and p["mixed_classes"]
-    assert 1190 < p["rating"] < 1210 or p["rating"] != p["rating"]
+    assert p["time_class"] == "rapid" and p["n"] == 29 and p["mixed_classes"]   # the first game of a pool has no known pre-game rating
+    assert 1175 < p["rating"] < 1225   # 14-15 points from 29 games against 1200s
 
 
 def test_hourly_profile_and_best_hour(games_factory):
@@ -128,3 +128,4 @@ def test_linear_trend():
     slope, se = M.linear_trend(noisy)
     assert abs(slope / se) < 2.5          # pure noise is not a reliable trend
     assert math.isnan(M.linear_trend([1, 2])[0])
+

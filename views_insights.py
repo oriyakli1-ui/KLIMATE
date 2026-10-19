@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import insights
-from i18n import he_losses, insight_text, t
+from strings import insight_text, t
 
 CYAN, GREEN, RED, GREY = "#06B6D4", "#10B981", "#EF4444", "#64748B"
 
@@ -115,7 +115,7 @@ def render_behavior_lab(g: pd.DataFrame) -> None:
     )
     if tp["stop_loss_after"]:
         _card(
-            t("stop_card_title", n=tp["stop_loss_after"], es="es" if tp["stop_loss_after"] > 1 else "", n_he=he_losses(int(tp["stop_loss_after"]))),
+            t("stop_card_title", n=tp["stop_loss_after"], es="es" if tp["stop_loss_after"] > 1 else ""),
             t("stop_card_detail"),
         )
     elif tp["enough_data"]:

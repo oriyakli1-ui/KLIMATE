@@ -9,13 +9,17 @@ Chess.com API -> `data_engine.fetch_player_games` (DataFrame, closed months cach
 
 ## Modules
 - `data_engine.py`: archive fetching, `opening` (family) / `opening_variation` from ECO URLs (`openings.py`), configurable months, progress callback.
-- `insights.py`: sessions (30 min gap), tilt/stop-loss, clock profile, rating-gap and colour profiles, `generate_insights` (gated by `_significant`). Returns `key` + `params`; English templates live in `TEMPLATES`, translations in `i18n.py`.
+- `insights.py`: sessions (30 min gap), tilt/stop-loss, clock profile, rating-gap and colour profiles, `generate_insights` (gated by `_significant`). Returns `key` + `params` and English text from `TEMPLATES`.
 - `analysis.py`: Lichess-style win-probability, accuracy, move labels (inaccuracy 10 / mistake 20 / blunder 30 win-chance points), phase and heuristic error types.
 - `analytics.py`: classic metrics (win rate, performance, tilt index, openings, time of day, spatial heat maps), Stockfish (`analyze_game_with_stockfish`, found via `STOCKFISH_PATH`, `PATH` or `/usr/games/stockfish`) and the chess-api.com fallback (`analyze_game` picks one and adds a `source` column). Failed HTTP evaluations are NaN, never copied.
 - `coach.py`: batch analysis of recent games, `training.py`: weekly plan, `style.py`: playing style -> grandmaster match, `share_card.py`: PNG.
 - `llm.py`: Gemini (`google-genai`) then Groq, successful answers cached; failures raise and are not cached.
 - `ga.py`: GA4 loader and event queue. Events: analyze_clicked, analysis_loaded, analysis_failed, page_selected, masterclass_opened, wrapped_generated, wrapped_downloaded, wrapped_share_clicked.
-- `i18n.py`: `t(key)` with English fallback; Hebrew switches the layout to RTL.
+- `strings.py`: UI strings (English only; the product targets an international audience).
+
+## Signature tools
+- `ledger.py` (Elo Ledger), `readiness.py` (Play Now) and `opening_eval.py` (Opening Check) are pure modules; pages in `views_features.py`.
+- Chess.com publishes every rating AFTER the game, for both players. `insights.enrich_games` therefore derives `rating_change` (this rating minus the previous one in the same pool), `user_rating` (pre-game) and an estimated pre-game `opp_rating`; values that cannot be reconstructed reliably stay NaN.
 
 ## Accuracy rules (audited)
 - `metrics.py` is the single definition of: how a result is scored (`score_result`, uses both players' result strings), confidence intervals, Elo performance rating (solved, never mixes time controls), significance tests, linear trend.
@@ -30,7 +34,6 @@ Chess.com API -> `data_engine.fetch_player_games` (DataFrame, closed months cach
 - Do not guess data: show "no reliable pattern" or blanks rather than invented numbers.
 
 ## Known limits
-- Hebrew covers navigation, landing, filters, the new pages and insight cards; older pages and training-plan texts are English.
 - Accuracy is an approximation of the Lichess formula (plain mean of per-move accuracy).
 - GM match is playful (captures/checks per move and game length), not a statistical model.
 - Streamlit Cloud's free tier sleeps and has limited CPU; the Coach Report takes ~2-3 s per game locally.

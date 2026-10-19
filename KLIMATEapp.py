@@ -10,10 +10,11 @@ from streamlit_option_menu import option_menu
 
 import insights
 import views_coach
+import views_features
 import views_insights
 from data_engine import ChessComAPIError, fetch_games
 from ga import flush_ga_events, inject_ga, queue_event
-from i18n import LANGS, apply_direction, t
+from strings import t
 from ui_blindspots import render_strategic_blindspots
 from ui_engine import render_engine_deep_dive
 from ui_overview import render_cognitive_clock_chart, render_overview_page
@@ -21,10 +22,10 @@ from ui_spatial import render_spatial
 from ui_style import inject_global_styles
 from ui_wrapped import show_klimate_masterpiece
 
-# (page key, bootstrap icon). Labels come from i18n ("nav_<key>"); keys are stable for analytics.
+# (page key, bootstrap icon). Labels come from strings.py ("nav_<key>"); keys are stable for analytics.
 PAGES = [
     ("overview", "house"), ("clock", "clock-history"), ("spatial", "bullseye"), ("blindspots", "bullseye"),
-    ("behavior", "activity"), ("time", "stopwatch"), ("coach", "cpu"), ("progress", "graph-up"),
+    ("openingcheck", "book"), ("behavior", "activity"), ("ledger", "cash-coin"), ("playnow", "lightning-charge"), ("time", "stopwatch"), ("coach", "cpu"), ("progress", "graph-up"),
     ("plan", "calendar-check"), ("compare", "people"), ("engine", "cpu"),
 ]
 TIMEZONES = ["Asia/Jerusalem", "UTC", "Europe/London", "Europe/Paris", "America/New_York",
@@ -42,13 +43,8 @@ def _timezone_options() -> list[str]:
     return [mine] + [z for z in TIMEZONES if z != mine]
 
 
-def _language_picker() -> None:
-    st.radio(t("language"), list(LANGS), horizontal=True, key="lang_label", label_visibility="collapsed")
-
-
 def _landing() -> None:
     """Landing page: logo, username and history range."""
-    _language_picker()
     _, logo_col, _ = st.columns([1, 2, 1])
     with logo_col:
         st.image("logo.png", width="stretch")
@@ -91,6 +87,7 @@ def _landing() -> None:
                 st.session_state["games_df"] = games_df
                 st.session_state["enriched"] = insights.enrich_games(games_df, username)
                 st.session_state["username"] = username
+                st.session_state["fetch_params"] = {"max_games": max_games, "months": months}
                 st.session_state["data_loaded"] = True
                 queue_event("analysis_loaded", games_count=int(len(games_df)))
                 st.rerun()
@@ -133,9 +130,17 @@ def _sidebar(games_df, username: str):
                 t("colour"), COLOUR_OPTIONS, horizontal=True, key="flt_color",
                 format_func=lambda c: t(c.lower()),
             )
-        _language_picker()
-        st.caption(t("games_loaded", n=len(games_df)))
+            st.caption(t("games_loaded", n=len(games_df)))
     return labels[label], time_classes, colour
+
+
+def _refresh_games(username: str) -> None:
+    """Reload the newest games with the same settings as the first load."""
+    params = st.session_state.get("fetch_params", {"max_games": 500, "months": 6})
+    fresh = fetch_games(username, params["max_games"], params["months"])
+    if not fresh.empty:
+        st.session_state["games_df"] = fresh
+        st.session_state["enriched"] = insights.enrich_games(fresh, username)
 
 
 def _dashboard() -> None:
@@ -181,6 +186,13 @@ def _dashboard() -> None:
         render_strategic_blindspots(enriched_f, username)
     elif page == "behavior":
         views_insights.render_behavior_lab(enriched_f)
+    elif page == "ledger":
+        views_features.render_elo_ledger(enriched_f, st.session_state.get("cognitive_tz", _browser_timezone()))
+    elif page == "playnow":
+        views_features.render_play_now(st.session_state["enriched"], username,
+                                       st.session_state.get("cognitive_tz", _browser_timezone()), lambda: _refresh_games(username))
+    elif page == "openingcheck":
+        views_features.render_opening_check(games_df, username)
     elif page == "time":
         views_insights.render_time_management(enriched_f)
     elif page == "coach":
@@ -199,13 +211,9 @@ def _dashboard() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Klimate AI", page_icon="♟️", layout="wide")
-    # The language radio lives later in the script; read its value first so this run already uses it.
-    st.session_state["lang"] = LANGS.get(st.session_state.get("lang_label", "English"), "en")
-
     inject_ga()
     flush_ga_events()  # events queued by a run that ended in st.rerun()
     inject_global_styles()
-    apply_direction()
 
     if not st.session_state.get("data_loaded", False):
         _landing()

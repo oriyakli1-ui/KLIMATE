@@ -10,9 +10,11 @@ import analysis
 import analytics
 import coach
 import insights
+import ledger
 import llm
+import opening_eval
 import training
-from i18n import t
+from strings import t
 from metrics import linear_trend
 from data_engine import ChessComAPIError, fetch_player_games
 from views_insights import CYAN, GREEN, GREY, RED, _bar, _card
@@ -112,19 +114,18 @@ def _goal_default(tc: str, current: int) -> int:
 
 def render_progress(g: pd.DataFrame, username: str) -> None:
     st.markdown("### " + t("progress_title"))
-    d = g.dropna(subset=["user_rating"])
+    d = g.dropna(subset=["rating_after"])
     if len(d) < 10:
         st.info("Not enough rated games yet. Load more history in the filters.")
         return
 
     live = analytics.get_real_time_ratings(username)
-    st.caption("Each point is your rating at the start of that game (Chess.com publishes the rating before the game). "
-               "'Current' in the goals below is your live rating.")
+    st.caption("Each point is your rating right after that game. 'Current' in the goals below is your live rating.")
     fig = go.Figure()
     for tc, color in zip(sorted(d["time_class"].unique()), [CYAN, GREEN, "#F59E0B", GREY]):
         s = d[d["time_class"] == tc].sort_values("date_utc")
         if len(s) >= 5:
-            fig.add_trace(go.Scatter(x=s["date_utc"], y=s["user_rating"], mode="lines", name=tc, line=dict(color=color)))
+            fig.add_trace(go.Scatter(x=s["date_utc"], y=s["rating_after"], mode="lines", name=tc, line=dict(color=color)))
     _line_layout(fig, "Rating over time")
     _plot(fig)
 
@@ -141,11 +142,11 @@ def render_progress(g: pd.DataFrame, username: str) -> None:
         s = d[d["time_class"] == tc].sort_values("date_utc")
         if len(s) < 15:
             continue
-        current = int(live[tc]) if isinstance(live.get(tc), int) else int(s["user_rating"].iloc[-1])
+        current = int(live[tc]) if isinstance(live.get(tc), int) else int(s["rating_after"].iloc[-1])
         goal = int(st.number_input(f"{tc.title()} goal", 100, 3500, _goal_default(tc, current), step=25, key=f"goal_{tc}"))
         st.query_params[f"goal_{tc}"] = str(goal)
         st.progress(min(1.0, max(0.0, current / goal)), text=f"{tc.title()}: {current} / {goal}")
-        slope, se = linear_trend(s.tail(80)["user_rating"].to_numpy(dtype=float))
+        slope, se = linear_trend(s.tail(80)["rating_after"].to_numpy(dtype=float))
         reliable = slope == slope and se == se and se > 0 and slope / se >= 2.0
         if current >= goal:
             st.success("Goal reached!")
@@ -162,7 +163,10 @@ def render_training_plan(g: pd.DataFrame, username: str) -> None:
     st.caption("Built from your own data. Run the Coach Report first for tactical and phase advice.")
     data = st.session_state.get("coach")
     patterns = analysis.error_patterns(data["moves"]) if data and data["user"] == username and not data["moves"].empty else None
-    plan = training.build_plan(insights.generate_insights(g), patterns, training.weak_openings(g))
+    store = st.session_state.get("opening_eval")
+    opening_report = opening_eval.report(store["data"]) if store and store["user"] == username else None
+    ledger_table = ledger.ledger(g, st.session_state.get("cognitive_tz", "UTC"))["table"]
+    plan = training.build_plan(insights.generate_insights(g), patterns, training.weak_openings(g), opening_report, ledger_table)
     for it in plan:
         _card(f"{it['day']}: {it['title']}", it["detail"], "info", link=it["link"])
     if patterns is None:
