@@ -307,3 +307,15 @@ def test_pro_prices_and_features():
     seen = {pro.pick_price(random.Random(i)) for i in range(60)}
     assert seen == set(pro.PRICES)
     assert all({"feature", "free", "pro"} <= set(f) for f in pro.FEATURES)
+
+
+def test_missing_month_archive_is_skipped(monkeypatch):
+    import data_engine
+
+    def fake_get(url, timeout=10):
+        if url.endswith("/games/archives"):
+            return {"archives": ["https://api.chess.com/pub/player/bob/games/2099/01"]}
+        raise data_engine.ChessComAPIError("Request to x failed: 404 Client Error: Not Found")
+
+    monkeypatch.setattr(data_engine, "_safe_get", fake_get)
+    assert data_engine.fetch_games("bob", 10, 1).empty

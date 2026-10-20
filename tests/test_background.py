@@ -32,3 +32,18 @@ def test_background_job_runs_shares_and_survives_errors():
     assert bad.status == "error" and "ValueError" in bad.error
     assert background.start("bad", lambda p: 1) is not bad                # a failed job may be retried
     background.clear()
+
+
+def test_running_counts_by_prefix():
+    import threading
+
+    background.clear()
+    gate = threading.Event()
+    background.start("coach:a", lambda p: gate.wait(2))
+    background.start("coach:b", lambda p: gate.wait(2))
+    background.start("history:c", lambda p: gate.wait(2))
+    assert background.running("coach:") == 2 and background.running() == 3
+    gate.set()
+    time.sleep(0.2)
+    assert background.running("coach:") == 0
+    background.clear()
