@@ -36,6 +36,7 @@ def build_plan(
     openings: Optional[pd.DataFrame] = None,
     opening_report: Optional[pd.DataFrame] = None,
     ledger_table: Optional[pd.DataFrame] = None,
+    conversion: Optional[Dict[str, object]] = None,
 ) -> List[Dict[str, str]]:
     """Up to seven actionable items, most evidence-backed first, padded with solid habits."""
     items: List[Dict[str, str]] = []
@@ -85,6 +86,13 @@ def build_plan(
                           "Decide a rule for this situation before you play, for example a break or a different time control.",
                 "link": "", "tag": "habit",
             })
+    if conversion and conversion.get("adv_n", 0) >= 4 and conversion.get("conv_rate", 1.0) < 0.6:
+        items.append({
+            "title": "Convert your winning positions",
+            "detail": f"You won only {conversion['adv_wins']} of {conversion['adv_n']} games in which you reached a winning position. "
+                      "When ahead, trade pieces, remove counterplay and check the opponent's threats before every move. Drill technique positions.",
+            "link": LICHESS_THEME + "advantage", "tag": "tactics",
+        })
     if "warmup" in keys:
         items.append({"title": "Warm up first", "detail": keys["warmup"]["detail"], "link": LICHESS_THEME + "mix", "tag": "habit"})
 

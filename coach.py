@@ -8,7 +8,7 @@ import pandas as pd
 import analysis
 import analytics
 
-GAME_COLUMNS = ["game_id", "date_utc", "time_class", "result", "accuracy", "blunders", "mistakes", "inaccuracies"]
+GAME_COLUMNS = ["game_id", "date_utc", "time_class", "result", "accuracy", "blunders", "mistakes", "inaccuracies", "peak_win", "low_win", "url"]
 
 
 def stockfish_available() -> bool:
@@ -57,6 +57,9 @@ def analyze_recent(
                         "blunders": counts["blunder"],
                         "mistakes": counts["mistake"],
                         "inaccuracies": counts["inaccuracy"],
+                        "peak_win": float(max(mv["win_before"].max(), mv["win_after"].max())),
+                        "low_win": float(min(mv["win_before"].min(), mv["win_after"].min())),
+                        "url": row.get("url", ""),
                     }
                 )
                 all_moves.append(mv.assign(game_id=i))
@@ -76,4 +79,9 @@ def stats_text(moves: pd.DataFrame, games: pd.DataFrame) -> str:
         lines.append(f"{r.phase}: {r.errors_per_100:.1f} serious errors per 100 moves, accuracy {r.accuracy:.0f}%")
     for r in pat["types"].itertuples():
         lines.append(f"Serious errors of type '{r.error_type}': {r.count} ({r.share:.0%})")
+    conv = analysis.conversion_profile(moves, games)
+    if conv["adv_n"]:
+        lines.append(f"Games where the player reached a winning position (80%+): {conv['adv_n']}, converted {conv['adv_wins']} to wins")
+    if conv["res_n"]:
+        lines.append(f"Games where the player fell to a lost position (20%-): {conv['res_n']}, saved {conv['res_wins'] + conv['res_draws']} (draw or win)")
     return "\n".join(lines)
