@@ -8,3 +8,4 @@ google-genai
 requests
 groq
 pillow
+# restart marker 2026-10-20
