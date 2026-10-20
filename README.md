@@ -14,6 +14,8 @@ Live app: https://klimate.streamlit.app/
 - **Converting advantages** (inside the Coach Report) – how often your winning positions (80%+ win chance) become wins and how often lost ones (20%-) are saved, with the move where each advantage collapsed.
 - **Opponent Scout** – type any Chess.com username: openings they lean on per colour, gated soft spots, clock and tilt tendencies, your head-to-head record and your own score against their openings.
 - **Try a public player** – the landing page can load a famous player so a visitor sees the product without an account.
+- **Blunder Trainer** – multiple-choice puzzles built from your own engine-detected mistakes (20+ points of win chance), with the engine's move revealed on the board.
+- **Home hero and summary card** – rating, biggest leak and strength in 30 seconds, downloadable as a PNG; the dashboard opens on recent games while the full history and the Stockfish analysis load in the background.
 - **Progress** – rating and score trends with goals saved in the page address.
 - **Training Plan** – a weekly plan built from your own findings with free Lichess exercises.
 - **Compare** – your habits next to another player's.

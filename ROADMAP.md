@@ -8,6 +8,7 @@ future API (FastAPI) plus web/Android front end can reuse it.
 - Habits in rating points (Elo Ledger), Play Now readiness, Weekly Report with rule tracking, Action Center.
 - Stockfish Coach Report incl. converting advantages and fighting back, Opening Check, Training Plan.
 - Opponent Scout, public-player demo, dark theme, grouped navigation.
+- Home hero, phased loading, background engine analysis, Blunder Trainer, usefulness vote, MARKETING.md launch kit.
 
 ## Next (needs real users first)
 - Measure which pages visitors use (GA4) and cut what is not used.
