@@ -411,6 +411,12 @@ def render_home_hero(g: pd.DataFrame, username: str, timezone: str) -> None:
             col.markdown(f"<div class='hero-card {tone}'><div class='hc-label'>{label}</div><div class='hc-sub'>{empty}</div></div>",
                          unsafe_allow_html=True)
 
+    tiles = [("Rating", f"{head['rating']:.0f}" if head else "-", f"{head['change_30d']:+.0f} in 30 days" if head and head["change_30d"] == head["change_30d"] else ""),
+             ("Games", str(summ.get("n", 0)), head.get("time_class", "") if head else ""),
+             ("Score", f"{summ['score']:.0%}" if summ.get("n") else "-", f"{summ.get('wins', 0)}W {summ.get('draws', 0)}D {summ.get('losses', 0)}L"),
+             ("Win rate", f"{summ['win_rate']:.0%}" if summ.get("n") else "-", "")]
+    st.download_button("Download my summary card (PNG)", share_card.render_weekly_png(username, f"{summ.get('n', 0)} games analyzed", tiles, title="MY CHESS ON KLIMATE"),
+                       file_name=f"klimate-{username}.png", mime="image/png", on_click=lambda: queue_event("summary_card_downloaded"))
     _feedback("home")
 
 
