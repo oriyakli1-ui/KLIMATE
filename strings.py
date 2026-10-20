@@ -9,7 +9,7 @@ STRINGS: Dict[str, str] = {
     "nav_blindspots": "Strategic Blindspots", "nav_behavior": "Behavior Lab", "nav_time": "Time Management",
     "nav_coach": "Coach Report", "nav_progress": "Progress", "nav_plan": "Training Plan",
     "nav_compare": "Compare", "nav_engine": "Engine Deep Dive",
-    "nav_ledger": "Elo Ledger", "nav_playnow": "Play Now", "nav_openingcheck": "Opening Check",
+    "nav_ledger": "Elo Ledger", "nav_playnow": "Play Now", "nav_openingcheck": "Opening Check", "nav_scout": "Opponent Scout",
     "nav_methodology": "Methodology", "nav_weekly": "Weekly Report",
     # landing + sidebar
     "tagline": "Decode Your Chess DNA. Elevate Your Mental Game.", "username": "Chess.com Username",
