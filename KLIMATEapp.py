@@ -219,6 +219,7 @@ def _apply_coach(username: str) -> None:
             st.session_state["coach"] = {"moves": moves, "games": games, "user": username, "n": len(games)}
             queue_event("coach_auto_ready", games_count=int(len(games)))
             st.toast("Engine analysis of your recent games is ready (Coach Report).", icon="🧠")
+            st.rerun(scope="app")   # refresh the Action Center, which depends on the engine state
 
 
 def _background_status(username: str) -> None:
