@@ -238,3 +238,16 @@ def test_home_facts():
     assert h["time_class"] in ("rapid", "blitz") and h["rating"] == 1200
     assert home.biggest_leak(g.iloc[0:0], None) is None or True
     assert home.rating_headline(g.iloc[0:0]) == {}
+
+
+def test_trainer_options_and_puzzles():
+    import chess
+    import trainer
+
+    fen = chess.STARTING_FEN
+    opts = trainer.make_options(fen, "e2e4", "a2a3", seed=1)
+    ucis = [o["uci"] for o in opts]
+    assert "e2e4" in ucis and "a2a3" in ucis and len(set(ucis)) == len(ucis) == 4
+    assert all(o["san"] for o in opts)
+    assert trainer.make_options(fen, "e2e4", "a2a3", seed=1) == opts      # deterministic
+    assert trainer.build_puzzles(pd.DataFrame(), "x", lambda p: None) == []
