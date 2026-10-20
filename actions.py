@@ -15,6 +15,7 @@ def build_actions(
     opening_report: Optional[pd.DataFrame],
     in_session: bool,
     games: int,
+    engine: str = "none",
 ) -> List[Dict[str, str]]:
     """Up to three actions, most urgent first. Each: title, detail, where (page name), tone."""
     acts: List[Dict[str, str]] = []
@@ -48,7 +49,11 @@ def build_actions(
         acts.append({"title": "Check your openings with the engine",
                      "detail": "Find out which openings leave you worse by move 10 (takes about 15 seconds).",
                      "where": "Opening Check", "tone": "info"})
-    if len(acts) < MAX_ACTIONS:
+    if engine == "ready" and len(acts) < MAX_ACTIONS:
+        acts.append({"title": "Your engine analysis is ready",
+                     "detail": "See where in the game you lose points, which positions you fail to convert and what kind of mistakes you make.",
+                     "where": "Coach Report", "tone": "good"})
+    if engine == "none" and len(acts) < MAX_ACTIONS:
         acts.append({"title": "Analyze your latest games with the engine",
                      "detail": "The Coach Report shows where in the game you lose points and what kind of mistakes you make.",
                      "where": "Coach Report", "tone": "info"})

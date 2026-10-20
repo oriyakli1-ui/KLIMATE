@@ -327,7 +327,10 @@ def _dashboard() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Klimate", page_icon="♟️", layout="wide")
+    st.set_page_config(menu_items={"Get help": "https://github.com/oriyakli1-ui/KLIMATE#readme",
+                                   "Report a bug": "https://github.com/oriyakli1-ui/KLIMATE/issues",
+                                   "About": "Klimate measures what your chess habits cost you in rating points, from your public Chess.com games. Free and private."},
+                       page_title="Klimate", page_icon="♟️", layout="wide")
     inject_ga()
     flush_ga_events()  # events queued by a run that ended in st.rerun()
     inject_global_styles()

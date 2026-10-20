@@ -213,7 +213,9 @@ def render_action_center(g: pd.DataFrame, g_full: pd.DataFrame, username: str, t
     if len(g_full) >= 60:
         state = readiness.current_state(g_full, pd.Timestamp.now(tz="UTC"), timezone)
         light, in_session = readiness.assess(g_full, state, timezone)["light"], bool(state["in_session"])
-    todo = actions.build_actions(insights.generate_insights(g), ledger.ledger(g, timezone)["table"], light, report, in_session, len(g))
+    coach_data = st.session_state.get("coach")
+    engine = "ready" if coach_data and coach_data.get("user") == username else ("running" if st.session_state.get("coach_job") else "none")
+    todo = actions.build_actions(insights.generate_insights(g), ledger.ledger(g, timezone)["table"], light, report, in_session, len(g), engine)
     colours = {"warn": "#F59E0B", "info": "#06B6D4", "good": "#10B981"}
     for i, a in enumerate(todo, start=1):
         st.markdown(
@@ -408,3 +410,20 @@ def render_home_hero(g: pd.DataFrame, username: str, timezone: str) -> None:
         else:
             col.markdown(f"<div class='hero-card {tone}'><div class='hc-label'>{label}</div><div class='hc-sub'>{empty}</div></div>",
                          unsafe_allow_html=True)
+
+    _feedback("home")
+
+
+def _feedback(where: str) -> None:
+    """One-click usefulness vote (a GA event only; nothing is stored by the app)."""
+    key = f"fb_{where}"
+    if st.session_state.get(key):
+        st.caption("Thanks for the feedback. Found a bug or have an idea? Use the menu at the top right, Report a bug.")
+        return
+    c = st.columns([3, 1, 1, 3])
+    c[0].caption("Was this summary useful?")
+    for col, label, val in ((c[1], "👍 Yes", "up"), (c[2], "👎 No", "down")):
+        if col.button(label, key=f"{key}_{val}"):
+            queue_event("feedback", where=where, value=val)
+            st.session_state[key] = val
+            st.rerun()
