@@ -395,7 +395,7 @@ def render_home_hero(g: pd.DataFrame, username: str, timezone: str) -> None:
     cols = st.columns(3)
     if head:
         change = f"{head['change_30d']:+.0f} in 30 days" if head["change_30d"] == head["change_30d"] else "no 30-day history yet"
-        sub_txt = f"{head['time_class']} · peak {head['peak']:.0f} · {change}"
+        sub_txt = f"{head['time_class']} · best in loaded games {head['peak']:.0f} · {change}"
         cols[0].markdown(f"<div class='hero-card'><div class='hc-label'>WHERE YOU STAND</div><div class='hc-value'>{head['rating']:.0f}</div>"
                          f"<div class='hc-sub'>{html.escape(sub_txt)}</div></div>", unsafe_allow_html=True)
     else:

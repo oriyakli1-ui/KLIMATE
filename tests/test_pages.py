@@ -71,7 +71,7 @@ def test_overview_page(monkeypatch):
     assert "Score" in text and "Performance Rating" in text
 
 
-@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology", "weekly", "scout", "home", "trainer"])
+@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology", "weekly", "scout", "home", "trainer", "pro"])
 @pytest.mark.parametrize("n", [120, 7, 1])
 def test_other_pages(which, n):
     def page():
@@ -131,6 +131,10 @@ def test_other_pages(which, n):
             puzzles = trainer.build_puzzles(games, "Bob", lambda p: ev)
             st.session_state["trainer"] = {"user": "me", "puzzles": puzzles, "i": 0, "score": 0, "answered": 0, "checked": None}
             views_coach.render_trainer(games, "me")
+        elif which_page == "pro":
+            import views_info
+
+            views_info.render_pro()
         elif which_page == "home":
             import views_features
 
