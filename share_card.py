@@ -68,14 +68,14 @@ def render_wrapped_png(username: str, stats: Dict[str, str], url: str = "klimate
     return buf.getvalue()
 
 
-def render_weekly_png(username: str, period: str, tiles: list, footer: str = "klimate.streamlit.app") -> bytes:
+def render_weekly_png(username: str, period: str, tiles: list, footer: str = "klimate.streamlit.app", title: str = "MY WEEK ON KLIMATE") -> bytes:
     """Shareable weekly summary. ``tiles`` is a list of (label, value, change_text) with up to four entries."""
     img = Image.new("RGB", (W, H), NAVY_BOTTOM)
     d = ImageDraw.Draw(img)
     for y in range(H):
         t_ = y / H
         d.line([(0, y), (W, y)], fill=tuple(int(NAVY_TOP[i] + (NAVY_BOTTOM[i] - NAVY_TOP[i]) * t_) for i in range(3)))
-    _center(d, 90, "MY WEEK ON KLIMATE", _font(38), MUTED)
+    _center(d, 90, title, _font(38), MUTED)
     _center(d, 170, username.upper(), _fit(d, username.upper(), 900, 84), CYAN)
     _center(d, 290, period, _font(34), TEXT)
     x0, y0, tw, th, gap = 60, 400, 450, 330, 60
