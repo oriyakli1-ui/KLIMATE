@@ -10,7 +10,7 @@ def test_navigation_groups_cover_every_page_exactly_once():
     pages = nav.all_pages()
     assert len(pages) == len(set(pages))
     expected = {"overview", "playnow", "behavior", "ledger", "time", "clock", "openingcheck", "blindspots", "spatial",
-                "coach", "engine", "progress", "plan", "compare", "methodology", "weekly", "scout", "trainer"}
+                "coach", "engine", "progress", "plan", "compare", "methodology", "weekly", "scout", "trainer", "pro"}
     assert set(pages) == expected
     assert all(strings.t(f"nav_{p}") != f"nav_{p}" for p in pages)      # every page has a label
     assert nav.group_of("ledger") == "habits" and nav.group_labels()["🏠 Home"] == "home"

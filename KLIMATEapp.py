@@ -73,7 +73,7 @@ def _landing() -> None:
             months = st.select_slider(t("months_back"), options=[3, 6, 12, 24], value=6)
             max_games = st.select_slider(t("max_games"), options=[100, 300, 500, 1000], value=500)
         analyze_clicked = st.button(t("analyze"), width="stretch")
-        st.caption("Press Enter or the button. Loading takes a few seconds; the first run for a new player can take up to a minute.")
+        st.caption("Press Enter or the button. Loading takes a few seconds; the first run for a new player can take up to a minute. Public games only; nothing is stored. Not affiliated with Chess.com or Lichess.")
 
     with col_center:
         st.markdown("<p style='text-align:center; color:#94A3B8; margin:14px 0 4px 0;'>No account handy? Try a public player:</p>", unsafe_allow_html=True)
@@ -331,6 +331,8 @@ def _dashboard() -> None:
         views_coach.render_compare(enriched_f, username)
     elif page == "engine":
         render_engine_deep_dive(games_df, username)
+    elif page == "pro":
+        views_info.render_pro()
     elif page == "methodology":
         views_info.render_methodology()
 

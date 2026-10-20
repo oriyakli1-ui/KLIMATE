@@ -297,3 +297,13 @@ def test_lichess_games_flow_through_enrichment():
     df = pd.DataFrame(rows)
     e = insights.enrich_games(df, "alice")
     assert len(e) == 5 and set(e["outcome"]) == {"win"} and e["time_class"].eq("blitz").all()
+
+
+def test_pro_prices_and_features():
+    import random
+
+    import pro
+
+    seen = {pro.pick_price(random.Random(i)) for i in range(60)}
+    assert seen == set(pro.PRICES)
+    assert all({"feature", "free", "pro"} <= set(f) for f in pro.FEATURES)

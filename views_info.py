@@ -44,6 +44,13 @@ less. Converting means winning (a draw does not count) and saving means drawing 
 reads only public games, lists an opening as a soft spot only with 5+ games whose interval lies clearly below the player's overall score,
 and makes no claim about habits (clock, tilt, colour) below 20 games.
 """),
+    ("Privacy and data use", """
+Klimate reads only the **public** games and ratings of the username you type, from the Chess.com or Lichess public API, when you press the
+button. Games are not stored in a database and no account is needed; finished months may be cached on the server only to avoid asking the
+platform again. The page records anonymous usage events (for example which page was opened) with Google Analytics, never usernames or games.
+The optional AI summary sends computed statistics, not your games, to an AI provider. Klimate is an independent project and is not affiliated
+with Chess.com or Lichess. Tell us if you want something removed: use the menu, Report a bug.
+"""),
     ("How we check ourselves", """
 `tools/audit_against_chesscom.py` recomputes the headline numbers (results, streaks, sessions, hours, ratings, performance rating,
 ledger totals, board maps, clock values) from the raw API data with independent code and compares them with the app. It is run after every
@@ -63,3 +70,33 @@ def render_methodology() -> None:
     for i, (title, body) in enumerate(SECTIONS):
         with st.expander(title, expanded=(i == 0)):
             st.markdown(body.strip())
+
+
+def render_pro() -> None:
+    import pandas as pd
+    import pro
+    from ga import queue_event, flush_ga_events
+
+    price = st.session_state.setdefault("pro_price", pro.pick_price())
+    if not st.session_state.get("pro_seen"):
+        st.session_state["pro_seen"] = True
+        queue_event("pro_viewed", price=price)
+    st.markdown("### ⭐ Klimate Pro (not available yet)")
+    st.caption("Klimate stays free. We are deciding whether a paid tier would be worth building, and your honest answer below helps. "
+               "Nothing is sold here and no payment details are collected.")
+    st.dataframe(pd.DataFrame(pro.FEATURES).rename(columns={"feature": "Feature", "free": "Free", "pro": "Pro (planned)"}),
+                 hide_index=True, width="stretch")
+    st.markdown(f"**Would you pay ${price} per month for Pro?**")
+    if st.session_state.get("pro_answer"):
+        st.success("Thank you, your answer was recorded anonymously.")
+    else:
+        cols = st.columns(len(pro.ANSWERS))
+        for col, (key, label) in zip(cols, pro.ANSWERS.items()):
+            if col.button(label, key=f"pro_{key}", width="stretch"):
+                st.session_state["pro_answer"] = key
+                queue_event("pro_answer", answer=key, price=price)
+                st.rerun()
+    url = pro.waitlist_url()
+    if url:
+        st.markdown(f"[Join the waiting list]({url})")
+    flush_ga_events()
