@@ -201,6 +201,7 @@ def _apply_history(username: str) -> None:
         st.session_state["games_df"] = job.result
         st.session_state["enriched"] = insights.enrich_games(job.result, username)
         st.session_state["fetch_params"] = {"max_games": info["max_games"], "months": info["months"]}
+        st.session_state.pop("flt_time_classes", None)   # new time controls may have appeared; show everything again
         queue_event("history_loaded", games_count=int(len(job.result)))
         st.toast(f"Full history loaded: {len(job.result)} games.", icon="✅")
         st.rerun(scope="app")
