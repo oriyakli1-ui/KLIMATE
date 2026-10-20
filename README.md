@@ -11,6 +11,9 @@ Live app: https://klimate.streamlit.app/
 - **Behavior Lab** – sessions, tilt and your personal stop-loss rule, warm-up effect, opponent strength, colour.
 - **Time Management** – clock use from the PGN (scrambles, early time burn, flagging).
 - **Coach Report** – Stockfish on your last games: accuracy, blunder/mistake/inaccuracy, weakest phase, error types, AI summary.
+- **Converting advantages** (inside the Coach Report) – how often your winning positions (80%+ win chance) become wins and how often lost ones (20%-) are saved, with the move where each advantage collapsed.
+- **Opponent Scout** – type any Chess.com username: openings they lean on per colour, gated soft spots, clock and tilt tendencies, your head-to-head record and your own score against their openings.
+- **Try a public player** – the landing page can load a famous player so a visitor sees the product without an account.
 - **Progress** – rating and score trends with goals saved in the page address.
 - **Training Plan** – a weekly plan built from your own findings with free Lichess exercises.
 - **Compare** – your habits next to another player's.

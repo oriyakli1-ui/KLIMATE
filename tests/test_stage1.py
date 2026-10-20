@@ -45,3 +45,11 @@ def test_actions_fall_back_to_discovery_when_there_is_no_evidence():
 def test_methodology_has_the_sections_users_need():
     titles = [t for t, _ in views_info.SECTIONS]
     assert any("Ratings" in t for t in titles) and any("reliable" in t for t in titles) and any("limits" in t for t in titles)
+
+def test_landing_has_demo_buttons():
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file("KLIMATEapp.py", default_timeout=60).run()
+    assert not at.exception, [e.value for e in at.exception]
+    labels = [b.label for b in at.button]
+    assert "hikaru" in labels and "magnuscarlsen" in labels

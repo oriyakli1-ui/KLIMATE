@@ -27,6 +27,7 @@ from ui_wrapped import show_klimate_masterpiece
 TIMEZONES = ["Asia/Jerusalem", "UTC", "Europe/London", "Europe/Paris", "America/New_York",
              "America/Los_Angeles", "Asia/Kolkata", "Asia/Tokyo"]
 COLOUR_OPTIONS = ["All", "White", "Black"]
+DEMO_PLAYERS = ["hikaru", "magnuscarlsen"]
 VALUE_CARDS = [
     ("📏", "Measured, not guessed", "Every number is checked against the raw Chess.com data and shown with its uncertainty."),
     ("🪙", "Your habits in rating points", "See what tilt, late nights and time scrambles actually cost you."),
@@ -75,11 +76,19 @@ def _landing() -> None:
         analyze_clicked = st.button(t("analyze"), width="stretch")
         st.caption("Press Enter or the button. Loading takes a few seconds; the first run for a new player can take up to a minute.")
 
+    with col_center:
+        st.markdown("<p style='text-align:center; color:#94A3B8; margin:14px 0 4px 0;'>No account handy? Try a public player:</p>", unsafe_allow_html=True)
+        demo_cols = st.columns(len(DEMO_PLAYERS))
+        demo_choice = next((name for col, name in zip(demo_cols, DEMO_PLAYERS) if col.button(name, key=f"demo_{name}", width="stretch")), None)
+
     if analyze_clicked:
         queue_event("analyze_clicked", has_username=bool(username_input.strip()))
+    if demo_choice:
+        queue_event("demo_clicked", player=demo_choice)
 
-    if analyze_clicked and username_input.strip():
-        username = username_input.strip()
+    target = demo_choice or (username_input.strip() if analyze_clicked else "")
+    if target:
+        username = target
         bar = st.progress(0.0, text=t("loading"))
         try:
             games_df = fetch_games(
