@@ -321,7 +321,8 @@ def render_scout(mine: pd.DataFrame, raw_games: pd.DataFrame, username: str, tim
         queue_event("scout_run")
         bar = st.progress(0.0, text="Reading their games...")
         try:
-            raw = fetch_games(opp_name.strip(), max_games=400, months=months, progress=lambda d, n: bar.progress(d / n, text="Reading their games..."))
+            raw = fetch_games(opp_name.strip(), max_games=400, months=months, progress=lambda d, n: bar.progress(d / n, text="Reading their games..."),
+                              platform=st.session_state.get("platform", "chesscom"))
         except ChessComAPIError as exc:
             bar.empty()
             st.error(f"Could not load games for {opp_name.strip()}: {exc}")

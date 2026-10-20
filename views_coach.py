@@ -211,8 +211,8 @@ def render_training_plan(g: pd.DataFrame, username: str) -> None:
 
 # --------------------------------------------------------------------- Compare
 @st.cache_data(show_spinner=False, ttl=600)
-def _rival_games(username: str) -> pd.DataFrame:
-    return fetch_player_games(username, max_games=300, months=6)
+def _rival_games(username: str, platform: str = "chesscom") -> pd.DataFrame:
+    return fetch_player_games(username, max_games=300, months=6, platform=platform)
 
 
 def _summary(g: pd.DataFrame) -> dict:
@@ -242,7 +242,7 @@ def render_compare(my_enriched: pd.DataFrame, username: str) -> None:
         return
     try:
         with st.spinner(f"Loading {rival}'s games…"):
-            df = _rival_games(rival)
+            df = _rival_games(rival, st.session_state.get("platform", "chesscom"))
     except ChessComAPIError as exc:
         st.error(f"Could not load {rival}: {exc}")
         return

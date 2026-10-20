@@ -30,6 +30,7 @@ TIMEZONES = ["Asia/Jerusalem", "UTC", "Europe/London", "Europe/Paris", "America/
              "America/Los_Angeles", "Asia/Kolkata", "Asia/Tokyo"]
 COLOUR_OPTIONS = ["All", "White", "Black"]
 DEMO_PLAYERS = ["hikaru", "magnuscarlsen"]
+PLATFORMS = {"Chess.com": "chesscom", "Lichess": "lichess"}
 VALUE_CARDS = [
     ("📏", "Measured, not guessed", "Every number is checked against the raw Chess.com data and shown with its uncertainty."),
     ("🪙", "Your habits in rating points", "See what tilt, late nights and time scrambles actually cost you."),
@@ -64,7 +65,10 @@ def _landing() -> None:
     )
     _, col_center, _ = st.columns([1, 2, 1])
     with col_center:
-        username_input = st.text_input(t("username"), value=st.query_params.get("user", ""), placeholder=t("username_ph"))
+        platform_label = st.radio("Platform", list(PLATFORMS), horizontal=True, label_visibility="collapsed", key="platform_choice",
+                                  index=1 if st.query_params.get("platform") == "lichess" else 0)
+        platform = PLATFORMS[platform_label]
+        username_input = st.text_input(f"{platform_label} username", value=st.query_params.get("user", ""), placeholder=t("username_ph"))
         with st.expander(t("history")):
             months = st.select_slider(t("months_back"), options=[3, 6, 12, 24], value=6)
             max_games = st.select_slider(t("max_games"), options=[100, 300, 500, 1000], value=500)
@@ -88,6 +92,8 @@ def _landing() -> None:
     if demo_choice:
         queue_event("demo_clicked", player=demo_choice)
 
+    if demo_choice:
+        platform = "chesscom"      # the demo players are Chess.com accounts
     target = demo_choice or (username_input.strip() if analyze_clicked else "")
     if target:
         username = target
@@ -97,11 +103,11 @@ def _landing() -> None:
             # Show the dashboard fast with the most recent games; the full history loads in the background.
             games_df = fetch_games(
                 username, max_games=quick_max, months=quick_months,
-                progress=lambda done, total: bar.progress(done / total, text=t("loading")),
+                progress=lambda done, total: bar.progress(done / total, text=t("loading")), platform=platform,
             )
             background_history = quick_months < months or quick_max < max_games
             if games_df.empty and background_history:
-                games_df = fetch_games(username, max_games=max_games, months=months,
+                games_df = fetch_games(username, max_games=max_games, months=months, platform=platform,
                                        progress=lambda done, total: bar.progress(done / total, text=t("loading")))
                 background_history = False
         except ChessComAPIError as exc:
@@ -120,10 +126,12 @@ def _landing() -> None:
                 st.session_state["fetch_params"] = {"max_games": quick_max if background_history else max_games,
                                                     "months": quick_months if background_history else months}
                 st.session_state["data_loaded"] = True
+                st.session_state["platform"] = platform
+                st.query_params["platform"] = platform
                 st.query_params["user"] = username
                 if background_history:
-                    key = f"history:{username.lower()}:{months}:{max_games}"
-                    background.start(key, lambda progress, u=username: fetch_games(u, max_games=max_games, months=months, progress=progress))
+                    key = f"history:{platform}:{username.lower()}:{months}:{max_games}"
+                    background.start(key, lambda progress, u=username, pf=platform: fetch_games(u, max_games=max_games, months=months, progress=progress, platform=pf))
                     st.session_state["history_job"] = {"key": key, "months": months, "max_games": max_games}
                 queue_event("analysis_loaded", games_count=int(len(games_df)), phased=background_history)
                 st.rerun()
@@ -175,7 +183,7 @@ def _sidebar(games_df, enriched, username: str):
 def _refresh_games(username: str) -> None:
     """Reload the newest games with the same settings as the first load."""
     params = st.session_state.get("fetch_params", {"max_games": 500, "months": 6})
-    fresh = fetch_games(username, params["max_games"], params["months"])
+    fresh = fetch_games(username, params["max_games"], params["months"], platform=st.session_state.get("platform", "chesscom"))
     if not fresh.empty:
         st.session_state["games_df"] = fresh
         st.session_state["enriched"] = insights.enrich_games(fresh, username)

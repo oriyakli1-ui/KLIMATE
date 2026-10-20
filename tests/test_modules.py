@@ -251,3 +251,49 @@ def test_trainer_options_and_puzzles():
     assert all(o["san"] for o in opts)
     assert trainer.make_options(fen, "e2e4", "a2a3", seed=1) == opts      # deterministic
     assert trainer.build_puzzles(pd.DataFrame(), "x", lambda p: None) == []
+
+
+def _li(**kw):
+    g = {"id": "abc12345", "rated": True, "variant": "standard", "speed": "blitz", "status": "mate", "winner": "white",
+         "createdAt": 1760000000000, "lastMoveAt": 1760000300000, "clock": {"initial": 180, "increment": 2},
+         "opening": {"eco": "B10", "name": "Caro-Kann Defense: Advance Variation"},
+         "pgn": '[White "a"]\n[Black "b"]\n\n1. e4 c6 2. d4 d5 3. e5 Bf5 4. Nf3 e6 5. Be2 Nd7 1-0',
+         "players": {"white": {"user": {"name": "Alice"}, "rating": 1500, "ratingDiff": 8},
+                     "black": {"user": {"name": "Bob"}, "rating": 1520, "ratingDiff": -8}}}
+    g.update(kw)
+    return g
+
+
+def test_lichess_parse_game_semantics():
+    import lichess
+
+    row = lichess.parse_game(_li())
+    assert row["white_rating"] == 1508 and row["black_rating"] == 1512         # ratings AFTER the game
+    assert (row["white_result"], row["black_result"]) == ("win", "checkmated")
+    assert row["opening"] == "Caro-Kann Defense" and row["time_control"] == "180+2" and row["time_class"] == "blitz"
+    assert row["plies"] >= 6 and row["url"].endswith("/abc12345")
+    flag = lichess.parse_game(_li(status="outoftime", winner="black"))
+    assert (flag["white_result"], flag["black_result"]) == ("timeout", "win")
+    draw = lichess.parse_game(_li(status="draw", winner=None))
+    assert draw["white_result"] == draw["black_result"] == "agreed"
+
+
+def test_lichess_skips_non_games():
+    import lichess
+
+    assert lichess.parse_game(_li(variant="atomic")) is None
+    assert lichess.parse_game(_li(status="aborted")) is None
+    assert lichess.parse_game(_li(speed="correspondence")) is None
+    ai = _li()
+    ai["players"]["black"] = {"aiLevel": 3}
+    assert lichess.parse_game(ai) is None
+
+
+def test_lichess_games_flow_through_enrichment():
+    import insights
+    import lichess
+
+    rows = [lichess.parse_game(_li(id=f"g{i}", createdAt=1760000000000 + i * 600000, lastMoveAt=1760000300000 + i * 600000)) for i in range(5)]
+    df = pd.DataFrame(rows)
+    e = insights.enrich_games(df, "alice")
+    assert len(e) == 5 and set(e["outcome"]) == {"win"} and e["time_class"].eq("blitz").all()
