@@ -1,4 +1,4 @@
-﻿"""Every page renders on synthetic data without raising (catches typos, missing imports, bad columns)."""
+"""Every page renders on synthetic data without raising (catches typos, missing imports, bad columns)."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -71,7 +71,7 @@ def test_overview_page(monkeypatch):
     assert "Score" in text and "Performance Rating" in text
 
 
-@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology", "weekly", "scout"])
+@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology", "weekly", "scout", "home"])
 @pytest.mark.parametrize("n", [120, 7, 1])
 def test_other_pages(which, n):
     def page():
@@ -116,6 +116,10 @@ def test_other_pages(which, n):
             import views_features
 
             views_features.render_weekly(g, "me", "UTC")
+        elif which_page == "home":
+            import views_features
+
+            views_features.render_home_hero(g, "me", "UTC")
         elif which_page == "scout":
             import views_features
 

@@ -72,6 +72,20 @@ def inject_global_styles() -> None:
         }
         .klimate-card { min-height: 112px; }
 
+        /* Home hero */
+        .klimate-hero { background: radial-gradient(circle at top left, #1E293B, #0B1220); border: 1px solid #334155; border-radius: 16px;
+            padding: 1.2rem 1.4rem; margin-bottom: 0.9rem; }
+        .klimate-hero .hero-kicker { color: #06B6D4; font-size: 0.78rem; letter-spacing: 0.18em; font-weight: 700; }
+        .klimate-hero .hero-title { color: #F8FAFC; font-size: 1.35rem; font-weight: 700; margin-top: 0.25rem; }
+        .hero-card { background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 1rem 1.1rem; height: 100%; min-height: 150px; margin-bottom: 0.7rem; }
+        .hero-card.leak { border-top: 3px solid #F59E0B; }
+        .hero-card.strength { border-top: 3px solid #10B981; }
+        .hero-card .hc-label { color: #94A3B8; font-size: 0.74rem; letter-spacing: 0.12em; font-weight: 700; }
+        .hero-card .hc-value { color: #F8FAFC; font-size: 2.4rem; font-weight: 800; line-height: 1.15; }
+        .hero-card .hc-title { color: #F8FAFC; font-size: 1.05rem; font-weight: 700; margin: 0.3rem 0 0.2rem 0; }
+        .hero-card .hc-sub { color: #CBD5E1; font-size: 0.9rem; line-height: 1.4; }
+        .hero-card .hc-link { color: #06B6D4; font-size: 0.8rem; margin-top: 0.4rem; }
+
         /* Landing page value cards */
         .klimate-value-card {
             background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 1.1rem 1.2rem; height: 100%;

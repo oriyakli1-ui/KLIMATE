@@ -1,4 +1,4 @@
-﻿"""Opponent Scout: a preparation sheet built from an opponent's public games.
+"""Opponent Scout: a preparation sheet built from an opponent's public games.
 
 Streamlit-free. Every claim is gated by sample size and an interval, in the same way as the rest of
 the app: with too little data the sheet says so instead of guessing.
