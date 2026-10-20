@@ -218,6 +218,8 @@ def _dashboard() -> None:
         views_features.render_weekly(st.session_state["enriched"], username, _tz())
     elif page == "playnow":
         views_features.render_play_now(st.session_state["enriched"], username, _tz(), lambda: _refresh_games(username))
+    elif page == "scout":
+        views_features.render_scout(st.session_state["enriched"], all_games, username, _tz())
     elif page == "openingcheck":
         views_features.render_opening_check(games_df, username)
     elif page == "time":

@@ -12,6 +12,7 @@ import insights
 import ledger
 import opening_eval
 import readiness
+import scout
 import share_card
 import weekly
 from uci import UciEngine
@@ -300,3 +301,73 @@ def render_weekly(g: pd.DataFrame, username: str, timezone: str) -> None:
              ("Rating", f"{cur['rating_change']:+.0f}" if known else "n/a", ""), ("Hours played", f"{cur['minutes'] / 60:.1f}", "")]
     st.download_button("⬇️ Download weekly card (PNG)", share_card.render_weekly_png(username, period, tiles),
                        file_name=f"klimate-week-{username}.png", mime="image/png")
+
+
+# ---------------------------------------------------------------- Opponent Scout
+def render_scout(mine: pd.DataFrame, raw_games: pd.DataFrame, username: str, timezone: str) -> None:
+    from data_engine import ChessComAPIError, fetch_games
+
+    st.markdown("### 🔭 Opponent Scout")
+    st.caption("Type the Chess.com username of someone you are about to play. Klimate reads their public games and builds a preparation "
+               "sheet: what they play, where they are weak, how they handle the clock. Nothing is stored.")
+    c = st.columns([3, 1])
+    opp_name = c[0].text_input("Opponent's Chess.com username", key="scout_user", placeholder="e.g. their username")
+    months = c[1].selectbox("History", [1, 3, 6], index=1, format_func=lambda m: f"{m} month{'s' if m > 1 else ''}", key="scout_months")
+    if st.button("Scout this player", key="scout_btn") and opp_name.strip():
+        bar = st.progress(0.0, text="Reading their games...")
+        try:
+            raw = fetch_games(opp_name.strip(), max_games=400, months=months, progress=lambda d, n: bar.progress(d / n, text="Reading their games..."))
+        except ChessComAPIError as exc:
+            bar.empty()
+            st.error(f"Could not load games for {opp_name.strip()}: {exc}")
+            return
+        bar.empty()
+        if raw.empty:
+            st.warning(f"No standard games found for {opp_name.strip()} in this period.")
+            return
+        st.session_state["scout"] = {"user": opp_name.strip(), "enriched": insights.enrich_games(raw, opp_name.strip())}
+    data = st.session_state.get("scout")
+    if not data:
+        st.info("Enter a username and press the button.")
+        return
+
+    opp, name = data["enriched"], data["user"]
+    rep = scout.scout_report(opp, mine)
+    if not rep["n"]:
+        st.warning("No games to analyze.")
+        return
+    s = rep["summary"]
+    st.markdown(f"#### {name}")
+    m = st.columns(4)
+    m[0].metric(f"Rating ({rep['main_class']})", f"{rep['rating']:.0f}" if rep["rating"] == rep["rating"] else "n/a",
+                f"{rep['rating'] - rep['rating_30d_ago']:+.0f} in 30 days" if rep["rating_30d_ago"] == rep["rating_30d_ago"] else None)
+    m[1].metric("Games read", rep["n"])
+    m[2].metric("Score", f"{s['score']:.0%}", f"{s['wins']}W {s['draws']}D {s['losses']}L", delta_color="off")
+    h2h = scout.head_to_head(raw_games, username, name)
+    m[3].metric("Your record vs them", f"{h2h['wins']}W {h2h['draws']}D {h2h['losses']}L" if h2h["n"] else "no games yet")
+    if not rep["enough"]:
+        st.warning(f"Only {rep['n']} games found (at least {scout.MIN_GAMES} are needed for behavioural claims). Openings below are shown with their sample sizes; treat them as hints.")
+
+    st.markdown("#### Preparation sheet")
+    if not rep["prep"]:
+        _card("Not enough data to prepare against", "Try a longer history, or this player has played very few standard games.", "info")
+    for item in rep["prep"]:
+        _card(item["title"], item["detail"], item["tone"])
+
+    cols = st.columns(2)
+    for col, colour in zip(cols, ("white", "black")):
+        ops = rep[colour]
+        col.markdown(f"**Openings as {colour.title()}**")
+        if ops.empty:
+            col.caption(f"No opening played {scout.MIN_OPENING_GAMES}+ times as {colour.title()}.")
+            continue
+        show = pd.DataFrame({"Opening": ops["opening"], "Games": ops["games"], "Share": ops["share"].map("{:.0%}".format),
+                             "Their score": ops["score"].map("{:.0%}".format),
+                             "Your score": [f"{sc:.0%} ({n})" if n >= 3 else "-" for sc, n in zip(ops["my_score"], ops["my_games"])]})
+        col.dataframe(show, hide_index=True, width="stretch")
+    st.caption("'Your score' is your own result (and game count) in games that featured the same opening on the other side of the board. "
+               "Intervals and sample sizes decide what is called a weakness; a soft spot needs 5+ games clearly below their overall score.")
+
+    hours = scout.peak_hours(insights.hourly_profile(opp, timezone))
+    if hours:
+        st.caption("They start most games around " + ", ".join(f"{h:02d}:00" for h in hours) + f" ({timezone}).")

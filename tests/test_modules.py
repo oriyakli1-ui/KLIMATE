@@ -191,3 +191,39 @@ def test_variants_daily_and_unplayed_games_are_excluded(monkeypatch, tmp_path):
     df = data_engine.fetch_games("bob", 50, 1)
     assert len(df) == 1
     assert df.attrs["excluded"] == {"variants": 1, "daily": 1, "short": 1}
+
+import numpy as np
+import pandas as pd
+
+import insights
+import scout
+from tests.test_pages import _games
+
+
+def test_scout_report_flags_habit_and_soft_spot():
+    rng = np.random.default_rng(3)
+    res = ["win"] * 25 + ["loss"] * 15
+    df = _games(len(res), seed=5)
+    df["opening"] = ["Italian Game"] * 20 + ["Slav Defense"] * 20
+    df["white_result"], df["black_result"] = zip(*[("win", "checkmated") if r == "win" else ("checkmated", "win") for r in res])
+    df.loc[df["opening"] == "Slav Defense", ["white_result", "black_result"]] = ("checkmated", "win")
+    opp = insights.enrich_games(df, "me")
+    rep = scout.scout_report(opp, opp)
+    assert rep["enough"] and rep["n"] == 40
+    titles = " | ".join(p["title"] for p in rep["prep"])
+    assert "Italian Game" in titles
+    assert "soft spot" in titles.lower() and "Slav Defense" in titles
+
+
+def test_scout_small_sample_makes_no_behaviour_claims():
+    opp = insights.enrich_games(_games(6, seed=2), "me")
+    rep = scout.scout_report(opp)
+    assert not rep["enough"]
+    assert not any("tilt" in p["title"].lower() or "time" in p["title"].lower() for p in rep["prep"])
+
+
+def test_scout_empty():
+    rep = scout.scout_report(insights.enrich_games(_games(5).iloc[0:0], "me"))
+    assert rep["n"] == 0 and rep["prep"] == []
+    assert scout.head_to_head(_games(5), "me", "nobody")["n"] == 0
+    assert scout.head_to_head(_games(5), "me", "opp")["n"] == 5
