@@ -313,6 +313,8 @@ def _dashboard() -> None:
         views_insights.render_time_management(enriched_f)
     elif page == "coach":
         views_coach.render_coach_report(games_df, username)
+    elif page == "trainer":
+        views_coach.render_trainer(games_df, username)
     elif page == "progress":
         views_coach.render_progress(enriched_f, username)
     elif page == "plan":

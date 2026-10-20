@@ -71,7 +71,7 @@ def test_overview_page(monkeypatch):
     assert "Score" in text and "Performance Rating" in text
 
 
-@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology", "weekly", "scout", "home"])
+@pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology", "weekly", "scout", "home", "trainer"])
 @pytest.mark.parametrize("n", [120, 7, 1])
 def test_other_pages(which, n):
     def page():
@@ -116,6 +116,21 @@ def test_other_pages(which, n):
             import views_features
 
             views_features.render_weekly(g, "me", "UTC")
+        elif which_page == "trainer":
+            import analysis
+            import pandas as pd
+            import trainer
+            import views_coach
+
+            analytics._find_stockfish = lambda: "fake-engine"
+            pgn = '[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0'
+            ev = pd.DataFrame({"ply": range(1, 8), "move_san": ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"],
+                               "evaluation": [0.3, 0.3, 0.4, 0.3, 0.5, 10.0, 10.0],
+                               "best_move": ["e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "h5f7", ""]})
+            games = pd.DataFrame({"pgn": [pgn], "date_utc": [pd.Timestamp("2026-01-01", tz="UTC")], "url": ["u"]})
+            puzzles = trainer.build_puzzles(games, "Bob", lambda p: ev)
+            st.session_state["trainer"] = {"user": "me", "puzzles": puzzles, "i": 0, "score": 0, "answered": 0, "checked": None}
+            views_coach.render_trainer(games, "me")
         elif which_page == "home":
             import views_features
 
