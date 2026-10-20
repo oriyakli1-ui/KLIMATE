@@ -31,6 +31,7 @@ TIMEZONES = ["Asia/Jerusalem", "UTC", "Europe/London", "Europe/Paris", "America/
 COLOUR_OPTIONS = ["All", "White", "Black"]
 DEMO_PLAYERS = ["hikaru", "magnuscarlsen"]
 PLATFORMS = {"Chess.com": "chesscom", "Lichess": "lichess"}
+MAX_AUTO_COACH_JOBS = 2      # engine analyses started automatically at the same time (free hosting has little CPU)
 VALUE_CARDS = [
     ("📏", "Measured, not guessed", "Every number is checked against the raw Chess.com data and shown with its uncertainty."),
     ("🪙", "Your habits in rating points", "See what tilt, late nights and time scrambles actually cost you."),
@@ -252,8 +253,8 @@ def _start_coach_job(all_games, username: str) -> None:
     """Begin the engine analysis automatically so the Coach Report is ready when the player gets there."""
     if st.session_state.get("coach_job") or (st.session_state.get("coach") or {}).get("user") == username:
         return
-    if not coach.stockfish_available():
-        return
+    if not coach.stockfish_available() or background.running("coach:") >= MAX_AUTO_COACH_JOBS:
+        return      # busy server: the player can still start the analysis from the Coach Report page
     key = f"coach:{username.lower()}:{len(all_games)}"
     background.start(key, lambda progress: coach.analyze_recent(all_games, username, n=20, depth=10, progress=progress))
     st.session_state["coach_job"] = {"key": key}

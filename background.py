@@ -51,6 +51,12 @@ def start(key: str, fn: Callable[[Callable[[int, int], None]], object]) -> Job:
     return job
 
 
+def running(prefix: str = "") -> int:
+    """How many jobs whose key starts with ``prefix`` are running right now (used to cap concurrent engine work)."""
+    with _LOCK:
+        return sum(1 for k, j in _JOBS.items() if k.startswith(prefix) and j.status == "running")
+
+
 def get(key: str) -> Optional[Job]:
     with _LOCK:
         return _JOBS.get(key)

@@ -184,7 +184,12 @@ def _month_games(month_url: str, username: str) -> List[Dict[str, Any]]:
             return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pass  # corrupt cache file: fall through and refetch
-    games = _safe_get(month_url).get("games", [])
+    try:
+        games = _safe_get(month_url).get("games", [])
+    except ChessComAPIError as exc:
+        if "404" in str(exc):        # an archive month that is listed but has no data (seen for active players)
+            return []
+        raise
     if closed and path is not None:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

@@ -73,6 +73,9 @@ def main(user: str, months: int = 6) -> int:
             assert other == "win", (mine, other)
             l += 1
     s = insights.overall_summary(g)
+    if not games:
+        print("no standard games in this window: nothing else to compare")
+        return 0
     check("wins", s["wins"], w); check("draws", s["draws"], d); check("losses", s["losses"], l)
     check("score", s["score"], (w + 0.5 * d) / len(games), 1e-9)
 
@@ -178,10 +181,15 @@ def main(user: str, months: int = 6) -> int:
     # ---- live ratings and all-time best
     stats = data_engine._safe_get(f"https://api.chess.com/pub/player/{me}/stats")
     r = analytics.get_real_time_ratings(user)
+    have = [tc for tc in ("rapid", "blitz", "bullet") if f"chess_{tc}" in stats]      # not everyone plays every time control
     for tc in ("rapid", "blitz", "bullet"):
-        check(f"current {tc}", r[tc], stats[f"chess_{tc}"]["last"]["rating"])
-        check(f"best {tc}", r["best"][tc], stats[f"chess_{tc}"]["best"]["rating"])
-    check("peak", r["peak"], max(stats[f"chess_{tc}"]["best"]["rating"] for tc in ("rapid", "blitz", "bullet")))
+        if tc in have:
+            check(f"current {tc}", r[tc], stats[f"chess_{tc}"]["last"]["rating"])
+            check(f"best {tc}", r["best"][tc], stats[f"chess_{tc}"]["best"]["rating"])
+        else:
+            check(f"current {tc} (not played)", r[tc], "N/A")
+    if have:
+        check("peak", r["peak"], max(stats[f"chess_{tc}"]["best"]["rating"] for tc in have))
 
     # ---- spatial: total activity equals the number of the player's moves
     pairs = [(x["pgn"], x["white"]["username"].lower() == me) for x in games[:60]]
