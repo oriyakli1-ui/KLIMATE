@@ -58,3 +58,32 @@ def test_error_patterns_aggregation():
     assert pat["phase"].set_index("phase").loc["opening", "errors_per_100"] == 50.0
     assert pat["types"].iloc[0]["error_type"] == "hung_piece"
     assert A.error_patterns(pd.DataFrame())["phase"].empty
+
+import pandas as pd
+
+import analysis
+
+
+def _moves(game_id, wins):
+    rows = []
+    for i, (b, a) in enumerate(wins, start=1):
+        rows.append({"game_id": game_id, "ply": i, "win_before": b, "win_after": a, "phase": "endgame", "move_san": "Qe2", "label": "blunder"})
+    return pd.DataFrame(rows)
+
+
+def test_conversion_profile_counts_and_collapse():
+    games = pd.DataFrame({
+        "game_id": ["a", "b", "c", "d"], "result": ["win", "loss", "draw", "win"],
+        "peak_win": [90, 85, 50, 60], "low_win": [40, 30, 10, 15], "url": ["", "u", "", ""],
+    })
+    moves = pd.concat([_moves("b", [(85, 85), (85, 30)])])
+    out = analysis.conversion_profile(moves, games)
+    assert out["adv_n"] == 2 and out["adv_wins"] == 1 and out["conv_rate"] == 0.5
+    assert out["res_n"] == 2 and out["res_wins"] == 1 and out["res_draws"] == 1 and out["save_rate"] == 1.0
+    col = out["collapses"]
+    assert list(col["game_id"]) == ["b"] and col.iloc[0]["turn_ply"] == 2
+
+
+def test_conversion_profile_empty():
+    out = analysis.conversion_profile(pd.DataFrame(), pd.DataFrame())
+    assert out["adv_n"] == 0 and out["collapses"].empty

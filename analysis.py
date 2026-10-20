@@ -1,4 +1,4 @@
-"""Move-quality analysis from engine evaluations (Lichess-style win-probability model).
+﻿"""Move-quality analysis from engine evaluations (Lichess-style win-probability model).
 
 Pure functions on top of the evaluation frame produced by ``analytics.analyze_game``
 (columns ``ply, move_san, evaluation, best_move``; evaluation = pawns, white's view,
@@ -216,3 +216,50 @@ def key_moments(eval_df: pd.DataFrame, pgn: str, username: str, top: int = 5) ->
                         "win_loss": float(r.win_loss), "error_type": r.error_type, **d})
     return out
 
+
+def conversion_profile(moves: pd.DataFrame, games: pd.DataFrame, hi: float = 80.0, lo: float = 20.0) -> Dict[str, object]:
+    """Converting advantages and fighting back, from per-game win-chance extremes.
+
+    ``games`` needs: game_id, result ('win'/'draw'/'loss'), peak_win, low_win (the player's best and worst
+    win chance during the game) and optionally url/date_utc. A game is an *advantage game* when the player
+    reached ``hi`` percent win chance at some point, a *deficit game* when they dropped to ``lo`` percent.
+    Collapses are advantage games that were not won; the turning point is the first player move after the
+    peak that left the win chance below 50%.
+    """
+    from metrics import wilson_interval
+
+    out: Dict[str, object] = {"adv_n": 0, "res_n": 0, "collapses": pd.DataFrame(), "hi": hi, "lo": lo}
+    if games is None or games.empty or "peak_win" not in games.columns:
+        return out
+    adv = games[games["peak_win"] >= hi]
+    deficit = games[games["low_win"] <= lo]
+    out.update(
+        adv_n=len(adv), adv_wins=int((adv["result"] == "win").sum()), adv_draws=int((adv["result"] == "draw").sum()),
+        adv_losses=int((adv["result"] == "loss").sum()), res_n=len(deficit),
+        res_wins=int((deficit["result"] == "win").sum()), res_draws=int((deficit["result"] == "draw").sum()),
+        res_losses=int((deficit["result"] == "loss").sum()),
+    )
+    if len(adv):
+        out["conv_rate"] = out["adv_wins"] / len(adv)
+        out["conv_lo"], out["conv_hi"] = wilson_interval(out["adv_wins"], len(adv))
+    if len(deficit):
+        saved = out["res_wins"] + out["res_draws"]
+        out["save_rate"] = saved / len(deficit)
+        out["save_lo"], out["save_hi"] = wilson_interval(saved, len(deficit))
+
+    rows = []
+    for r in adv[adv["result"] != "win"].itertuples():
+        mv = moves[moves["game_id"] == r.game_id].sort_values("ply") if moves is not None and not moves.empty else pd.DataFrame()
+        turn = None
+        if not mv.empty:
+            peak_idx = mv["win_before"].idxmax()
+            after = mv.loc[peak_idx:]
+            below = after[after["win_after"] < 50.0]
+            if not below.empty:
+                turn = below.iloc[0]
+        rows.append({"game_id": r.game_id, "date_utc": getattr(r, "date_utc", None), "url": getattr(r, "url", ""), "result": r.result,
+                     "peak": float(r.peak_win), "turn_ply": int(turn["ply"]) if turn is not None else None,
+                     "phase": turn["phase"] if turn is not None else None, "move": turn["move_san"] if turn is not None else None,
+                     "label": turn["label"] if turn is not None else None})
+    out["collapses"] = pd.DataFrame(rows)
+    return out

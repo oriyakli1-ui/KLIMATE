@@ -96,11 +96,45 @@ def render_coach_report(games_df: pd.DataFrame, username: str) -> None:
              [f"{s:.0%}<br>n={n_}" for s, n_ in zip(types_df["share"], types_df["count"])], height=300)
         st.caption("Error types are heuristics based on the engine's best moves, not a verdict.")
 
+    _render_conversion(moves, games)
+
     if st.button("Write my coaching summary", key="coach_summary_btn"):
         with st.spinner("Writing…"):
             st.session_state["coach_summary"] = llm.pattern_summary(coach.stats_text(moves, games))
     if st.session_state.get("coach_summary"):
         st.info(st.session_state["coach_summary"])
+
+
+def _render_conversion(moves: pd.DataFrame, games: pd.DataFrame) -> None:
+    """Converting winning positions and fighting back from lost ones."""
+    conv = analysis.conversion_profile(moves, games)
+    st.markdown("#### Converting advantages and fighting back")
+    c = st.columns(2)
+    if conv["adv_n"]:
+        c[0].metric("Winning positions converted", f"{conv['conv_rate']:.0%}",
+                    f"{conv['adv_wins']} of {conv['adv_n']} games reaching 80%+ win chance",
+                    help=f"95% interval {conv['conv_lo']:.0%} to {conv['conv_hi']:.0%}. Wins only; draws count as not converted.")
+    else:
+        c[0].metric("Winning positions converted", "n/a", "no game reached 80%+ yet")
+    if conv["res_n"]:
+        c[1].metric("Lost positions saved", f"{conv['save_rate']:.0%}",
+                    f"{conv['res_wins'] + conv['res_draws']} of {conv['res_n']} games falling to 20% or less",
+                    help=f"95% interval {conv['save_lo']:.0%} to {conv['save_hi']:.0%}. A draw or a win counts as saved.")
+    else:
+        c[1].metric("Lost positions saved", "n/a", "no game fell to 20% or less yet")
+    col = conv["collapses"]
+    if col is not None and len(col):
+        st.caption("Advantages that were not converted. 'Turning point' is the first of your moves after the peak that left you below 50%.")
+        show = col.assign(
+            Game=[f"[open]({u})" if u else "" for u in col.get("url", [""] * len(col))],
+            Peak=col["peak"].map("{:.0f}%".format), Result=col["result"],
+            **{"Turning point": [f"move {int(p) // 2 + 1}: {m} ({ph}, {lb})" if m else "gradual" for p, m, ph, lb in zip(col["turn_ply"].fillna(0), col["move"], col["phase"], col["label"])]},
+        )
+        st.dataframe(show[["Peak", "Result", "Turning point", "Game"]], hide_index=True, width="stretch",
+                     column_config={"Game": st.column_config.LinkColumn("Game", display_text="open")})
+        if col["phase"].notna().sum() >= 3:
+            top = col["phase"].value_counts()
+            st.write(f"Most of your throws happen in the **{top.index[0]}** ({int(top.iloc[0])} of {int(col['phase'].notna().sum())}).")
 
 
 # -------------------------------------------------------------------- Progress
@@ -166,7 +200,8 @@ def render_training_plan(g: pd.DataFrame, username: str) -> None:
     store = st.session_state.get("opening_eval")
     opening_report = opening_eval.report(store["data"]) if store and store["user"] == username else None
     ledger_table = ledger.ledger(g, st.session_state.get("cognitive_tz", "UTC"))["table"]
-    plan = training.build_plan(insights.generate_insights(g), patterns, training.weak_openings(g), opening_report, ledger_table)
+    conv = analysis.conversion_profile(data["moves"], data["games"]) if data and data["user"] == username and not data["games"].empty else None
+    plan = training.build_plan(insights.generate_insights(g), patterns, training.weak_openings(g), opening_report, ledger_table, conv)
     for it in plan:
         _card(f"{it['day']}: {it['title']}", it["detail"], "info", link=it["link"])
     if patterns is None:
