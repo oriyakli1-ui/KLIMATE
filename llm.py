@@ -5,12 +5,32 @@ therefore never cached) so callers can show a friendly message.
 """
 from __future__ import annotations
 
+import datetime as dt
+import os
+import threading
+
 import streamlit as st
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.5-flash-lite"      # about 3x cheaper than flash; plenty for 2-3 sentence answers
 GROQ_MODEL = "llama-3.3-70b-versatile"
 SYSTEM_PROMPT = "You are an elite chess psychology coach. Be concise, practical and encouraging."
 UNAVAILABLE_MESSAGE = "AI Coach is currently resting. Please try again in a minute."
+LIMIT_MESSAGE = "The AI explanation limit for this visit is reached. The built-in explanation above is always available."
+DAILY_LIMIT = int(os.environ.get("KLIMATE_AI_DAILY_LIMIT", "300"))   # fresh (uncached) model calls per day, whole app
+SESSION_LIMIT = int(os.environ.get("KLIMATE_AI_SESSION_LIMIT", "6"))  # AI requests per visitor session
+_SPENT = {"day": "", "n": 0}
+_SPENT_LOCK = threading.Lock()
+
+
+def _spend() -> None:
+    """Count one real (uncached) model call; refuse past the daily budget so cost can never run away."""
+    today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    with _SPENT_LOCK:
+        if _SPENT["day"] != today:
+            _SPENT["day"], _SPENT["n"] = today, 0
+        if _SPENT["n"] >= DAILY_LIMIT:
+            raise LLMUnavailable("daily AI budget reached")
+        _SPENT["n"] += 1
 
 
 class LLMUnavailable(RuntimeError):
@@ -71,6 +91,7 @@ def generate(prompt: str, max_tokens: int = 400, version: int = 2) -> str:
     ``version`` is part of the cache key: bump it when the generation logic changes so stale
     answers (for example truncated ones) are not served from the cache.
     """
+    _spend()
     errors = []
     for provider in (_gemini, _groq):
         try:
@@ -86,6 +107,10 @@ def generate(prompt: str, max_tokens: int = 400, version: int = 2) -> str:
 
 def safe_generate(prompt: str, max_tokens: int = 400) -> str:
     """Like ``generate`` but returns a friendly message instead of raising."""
+    used = st.session_state.get("ai_calls", 0)
+    if used >= SESSION_LIMIT:
+        return LIMIT_MESSAGE
+    st.session_state["ai_calls"] = used + 1
     try:
         return generate(prompt, max_tokens)
     except LLMUnavailable:
@@ -97,14 +122,10 @@ def coach_explanation(fen: str, actual_move: str, best_move: str, win_loss_point
     if not fen:
         return UNAVAILABLE_MESSAGE
     prompt = (
-        f"The board position (FEN) before the move is: {fen}. "
-        f"The player played '{actual_move}', but the engine's best move was '{best_move}'. "
-        f"The move gave away about {round(float(win_loss_points))} percentage points of winning chances. "
-        "Explain the 'why' behind the mistake from a human perspective, using only what is visible in "
-        "the position. Decide whether it looks like: panic/defensive oversight, greed (grabbing a pawn "
-        "and ignoring a threat), tunnel vision, or impatience in a winning position, and say so only if "
-        "the position supports it. Answer in 2-3 punchy, encouraging sentences and give one actionable "
-        "tip for next time."
+        f"FEN before the move: {fen}. Played: {actual_move}. Engine best: {best_move}. "
+        f"Win chance lost: {round(float(win_loss_points))} points. "
+        "In 2-3 short encouraging sentences, say why a human might have played it (only if the position supports it) "
+        "and give one tip."
     )
     return safe_generate(prompt, 300)
 
@@ -112,8 +133,7 @@ def coach_explanation(fen: str, actual_move: str, best_move: str, win_loss_point
 def pattern_summary(stats_text: str) -> str:
     """Turn computed statistics into a short coaching summary. The numbers come from code, not the model."""
     prompt = (
-        "Below are statistics computed from a chess player's recent games. Write a short coaching summary "
-        "(max 120 words): the single biggest weakness, one strength, and one concrete habit to build this week. "
-        "Use ONLY the facts below; do not invent numbers.\n\n" + stats_text
+        "Coaching summary (max 100 words) from these stats: biggest weakness, one strength, one habit for this week. "
+        "Use only these facts.\n" + stats_text
     )
     return safe_generate(prompt, 350)
