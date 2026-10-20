@@ -199,6 +199,7 @@ def fetch_games(
     max_games: int = 200,
     months: int = 3,
     progress: Optional[Callable[[int, int], None]] = None,
+    platform: str = "chesscom",
 ) -> pd.DataFrame:
     """
     Fetch a player's most recent games from the Chess.com public API.
@@ -242,6 +243,13 @@ def fetch_games(
         If there is an issue communicating with the Chess.com API or parsing
         the responses.
     """
+    if platform == "lichess":
+        import lichess
+
+        try:
+            return lichess.fetch_games(username, max_games, months, progress, COLUMNS)
+        except lichess.LichessAPIError as exc:
+            raise ChessComAPIError(str(exc)) from exc
     if max_games <= 0:
         raise ValueError("max_games must be a positive integer")
     if months < 0:
@@ -314,9 +322,9 @@ def fetch_games(
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def fetch_player_games(username: str, max_games: int = 200, months: int = 3) -> pd.DataFrame:
+def fetch_player_games(username: str, max_games: int = 200, months: int = 3, platform: str = "chesscom") -> pd.DataFrame:
     """Cached ``fetch_games`` for callers that do not need progress reporting."""
-    return fetch_games(username, max_games, months)
+    return fetch_games(username, max_games, months, platform=platform)
 
 
 if __name__ == "__main__":

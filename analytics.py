@@ -45,8 +45,15 @@ def _rating(block: object, which: str) -> object:
     return int(value) if isinstance(value, (int, float)) else _NA
 
 
-def get_real_time_ratings(username: str) -> Dict[str, object]:
-    """Current and all-time-best ratings from the Chess.com stats API.
+@st.cache_data(show_spinner=False, ttl=300)
+def _lichess_ratings(name: str) -> dict:
+    import lichess
+
+    return lichess.fetch_ratings(name)
+
+
+def get_real_time_ratings(username: str, platform: str | None = None) -> Dict[str, object]:
+    """Current and all-time-best ratings from the Chess.com stats API (or Lichess when the session's platform is Lichess).
 
     Keys: ``rapid``/``blitz``/``bullet`` (current), ``best`` (same keys, all-time best),
     ``peak`` (highest best rating of the three) and ``peak_class``. Values are ints or 'N/A'.
@@ -55,6 +62,8 @@ def get_real_time_ratings(username: str) -> Dict[str, object]:
     empty = {**{c: _NA for c in TIME_CLASSES}, "best": {c: _NA for c in TIME_CLASSES}, "peak": _NA, "peak_class": ""}
     if not name:
         return empty
+    if (platform or st.session_state.get("platform", "chesscom")) == "lichess":
+        return _lichess_ratings(name)
     try:
         data = _fetch_stats(name)
     except Exception:  # noqa: BLE001 - network/JSON problems: show N/A rather than guess
