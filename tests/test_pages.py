@@ -72,7 +72,8 @@ def test_overview_page(monkeypatch):
 
 
 @pytest.mark.parametrize("which", ["clock", "blindspots", "behavior", "time", "plan", "progress", "ledger", "playnow", "openingcheck", "action", "methodology", "weekly", "scout"])
-def test_other_pages(which):
+@pytest.mark.parametrize("n", [120, 7, 1])
+def test_other_pages(which, n):
     def page():
         import analytics
         import insights
@@ -84,7 +85,7 @@ def test_other_pages(which):
         from tests.test_pages import _games
 
         analytics.get_real_time_ratings = lambda u: {"rapid": 1300, "blitz": 1100, "bullet": "N/A", "best": {}, "peak": 1400, "peak_class": "rapid"}
-        g = insights.enrich_games(_games(), "me")
+        g = insights.enrich_games(_games(st.session_state["n"]), "me")
         which_page = st.session_state["which"]
         if which_page == "clock":
             ui_overview.render_cognitive_clock_chart(insights.hourly_profile(g, "UTC"), "UTC")
@@ -119,7 +120,7 @@ def test_other_pages(which):
             import views_features
 
             st.session_state["scout"] = {"user": "opp", "enriched": g}
-            views_features.render_scout(g, _games(), "me", "UTC")
+            views_features.render_scout(g, _games(st.session_state["n"]), "me", "UTC")
         elif which_page == "methodology":
             import views_info
 
@@ -139,6 +140,7 @@ def test_other_pages(which):
 
     at = AppTest.from_function(page, default_timeout=60)
     at.session_state["which"] = which
+    at.session_state["n"] = n
     at.run()
     assert not at.exception, [e.value for e in at.exception]
 
@@ -151,3 +153,24 @@ def test_spatial_page():
         ui_spatial.render_spatial(_games(20), "me")
 
     _run(page)
+
+
+@pytest.mark.parametrize("n", [1, 3])
+def test_overview_and_spatial_with_tiny_data(n):
+    def page():
+        import analytics
+        import insights
+        import streamlit as st
+        import ui_overview
+        import ui_spatial
+        from tests.test_pages import _games
+
+        analytics.get_real_time_ratings = lambda u: {"rapid": 1300, "blitz": 1100, "bullet": "N/A", "best": {}, "peak": 1400, "peak_class": "rapid"}
+        g = _games(st.session_state["n"])
+        ui_overview.render_overview_page(insights.enrich_games(g, "me"), "me")
+        ui_spatial.render_spatial(g, "me")
+
+    at = AppTest.from_function(page, default_timeout=60)
+    at.session_state["n"] = n
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]

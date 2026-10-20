@@ -38,6 +38,12 @@ The ledger compares your **measured** rating change per game between situations.
 situations overlap, so their totals must not be added. Play Now applies the same comparison to the situation you are in right now and
 says "not enough evidence" when your history cannot answer.
 """),
+    ("Converting advantages and the Opponent Scout", """
+An *advantage game* is one in which Stockfish gave you 80% or more win chance at some point; a *lost position* is one that fell to 20% or
+less. Converting means winning (a draw does not count) and saving means drawing or winning, each with a 95% interval. The Opponent Scout
+reads only public games, lists an opening as a soft spot only with 5+ games whose interval lies clearly below the player's overall score,
+and makes no claim about habits (clock, tilt, colour) below 20 games.
+"""),
     ("How we check ourselves", """
 `tools/audit_against_chesscom.py` recomputes the headline numbers (results, streaks, sessions, hours, ratings, performance rating,
 ledger totals, board maps, clock values) from the raw API data with independent code and compares them with the app. It is run after every
