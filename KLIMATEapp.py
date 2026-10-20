@@ -8,8 +8,10 @@ from __future__ import annotations
 import streamlit as st
 from streamlit_option_menu import option_menu
 
+import background
 import insights
 import nav
+import coach
 import views_coach
 import views_features
 import views_info
@@ -60,13 +62,6 @@ def _landing() -> None:
         f"{t('tagline')}</p>",
         unsafe_allow_html=True,
     )
-    cols = st.columns(3)
-    for col, (icon, title, text) in zip(cols, VALUE_CARDS):
-        col.markdown(
-            f"<div class='klimate-value-card'><div class='vc-icon'>{icon}</div><div class='vc-title'>{title}</div>"
-            f"<div class='vc-text'>{text}</div></div>", unsafe_allow_html=True)
-    st.markdown("<div style='height: 22px'></div>", unsafe_allow_html=True)
-
     _, col_center, _ = st.columns([1, 2, 1])
     with col_center:
         username_input = st.text_input(t("username"), value=st.query_params.get("user", ""), placeholder=t("username_ph"))
@@ -81,6 +76,13 @@ def _landing() -> None:
         demo_cols = st.columns(len(DEMO_PLAYERS))
         demo_choice = next((name for col, name in zip(demo_cols, DEMO_PLAYERS) if col.button(name, key=f"demo_{name}", width="stretch")), None)
 
+    st.markdown("<div style='height: 26px'></div>", unsafe_allow_html=True)
+    cols = st.columns(3)
+    for col, (icon, title, text) in zip(cols, VALUE_CARDS):
+        col.markdown(
+            f"<div class='klimate-value-card'><div class='vc-icon'>{icon}</div><div class='vc-title'>{title}</div>"
+            f"<div class='vc-text'>{text}</div></div>", unsafe_allow_html=True)
+
     if analyze_clicked:
         queue_event("analyze_clicked", has_username=bool(username_input.strip()))
     if demo_choice:
@@ -90,11 +92,18 @@ def _landing() -> None:
     if target:
         username = target
         bar = st.progress(0.0, text=t("loading"))
+        quick_months, quick_max = (1 if months > 1 else months), min(max_games, 200)
         try:
+            # Show the dashboard fast with the most recent games; the full history loads in the background.
             games_df = fetch_games(
-                username, max_games=max_games, months=months,
+                username, max_games=quick_max, months=quick_months,
                 progress=lambda done, total: bar.progress(done / total, text=t("loading")),
             )
+            background_history = quick_months < months or quick_max < max_games
+            if games_df.empty and background_history:
+                games_df = fetch_games(username, max_games=max_games, months=months,
+                                       progress=lambda done, total: bar.progress(done / total, text=t("loading")))
+                background_history = False
         except ChessComAPIError as exc:
             queue_event("analysis_failed", reason="api_error")
             bar.empty()
@@ -108,10 +117,15 @@ def _landing() -> None:
                 st.session_state["games_df"] = games_df
                 st.session_state["enriched"] = insights.enrich_games(games_df, username)
                 st.session_state["username"] = username
-                st.session_state["fetch_params"] = {"max_games": max_games, "months": months}
+                st.session_state["fetch_params"] = {"max_games": quick_max if background_history else max_games,
+                                                    "months": quick_months if background_history else months}
                 st.session_state["data_loaded"] = True
                 st.query_params["user"] = username
-                queue_event("analysis_loaded", games_count=int(len(games_df)))
+                if background_history:
+                    key = f"history:{username.lower()}:{months}:{max_games}"
+                    background.start(key, lambda progress, u=username: fetch_games(u, max_games=max_games, months=months, progress=progress))
+                    st.session_state["history_job"] = {"key": key, "months": months, "max_games": max_games}
+                queue_event("analysis_loaded", games_count=int(len(games_df)), phased=background_history)
                 st.rerun()
 
     flush_ga_events()
@@ -152,7 +166,7 @@ def _sidebar(games_df, enriched, username: str):
             colour = st.radio(t("colour"), COLOUR_OPTIONS, horizontal=True, key="flt_color", format_func=lambda c: t(c.lower()))
             st.caption(t("games_loaded", n=len(games_df)))
         if st.button("Load someone else", key="reset_user"):
-            for key in ("data_loaded", "games_df", "enriched", "username", "opening_eval", "coach", "coach_summary"):
+            for key in ("data_loaded", "games_df", "enriched", "username", "opening_eval", "coach", "coach_summary", "history_job", "coach_job"):
                 st.session_state.pop(key, None)
             st.rerun()
     return page_labels[label], time_classes, colour
@@ -176,6 +190,65 @@ def _export_button(enriched_f, username: str) -> None:
                                on_click=lambda: queue_event("data_exported"))
 
 
+def _apply_history(username: str) -> None:
+    """Swap in the full history once its background job has finished."""
+    info = st.session_state.get("history_job")
+    job = background.get(info["key"]) if info else None
+    if job is None or job.status == "running":
+        return
+    st.session_state.pop("history_job", None)
+    if job.status == "done" and job.result is not None and not job.result.empty:
+        st.session_state["games_df"] = job.result
+        st.session_state["enriched"] = insights.enrich_games(job.result, username)
+        st.session_state["fetch_params"] = {"max_games": info["max_games"], "months": info["months"]}
+        queue_event("history_loaded", games_count=int(len(job.result)))
+        st.toast(f"Full history loaded: {len(job.result)} games.", icon="✅")
+        st.rerun(scope="app")
+
+
+def _apply_coach(username: str) -> None:
+    info = st.session_state.get("coach_job")
+    job = background.get(info["key"]) if info else None
+    if job is None or job.status == "running":
+        return
+    st.session_state.pop("coach_job", None)
+    if job.status == "done" and job.result is not None:
+        moves, games = job.result
+        if not games.empty and (st.session_state.get("coach") or {}).get("user") != username:
+            st.session_state["coach"] = {"moves": moves, "games": games, "user": username, "n": len(games)}
+            queue_event("coach_auto_ready", games_count=int(len(games)))
+            st.toast("Engine analysis of your recent games is ready (Coach Report).", icon="🧠")
+
+
+def _background_status(username: str) -> None:
+    """One slim line while the full history or the engine analysis is still working (polls every 2 s)."""
+    def tick() -> None:
+        _apply_history(username)
+        _apply_coach(username)
+        lines = []
+        for name, label in (("history_job", "Loading your older games"), ("coach_job", "Analyzing your recent games with Stockfish")):
+            info = st.session_state.get(name)
+            job = background.get(info["key"]) if info else None
+            if job is not None and job.status == "running":
+                lines.append(f"{label}{f' ({job.done}/{job.total})' if job.total else '...'}")
+        if lines:
+            st.caption("⏳ " + "  |  ".join(lines) + " - you can keep exploring.")
+
+    active = any(st.session_state.get(k) for k in ("history_job", "coach_job"))
+    st.fragment(run_every=2 if active else None)(tick)()
+
+
+def _start_coach_job(all_games, username: str) -> None:
+    """Begin the engine analysis automatically so the Coach Report is ready when the player gets there."""
+    if st.session_state.get("coach_job") or (st.session_state.get("coach") or {}).get("user") == username:
+        return
+    if not coach.stockfish_available():
+        return
+    key = f"coach:{username.lower()}:{len(all_games)}"
+    background.start(key, lambda progress: coach.analyze_recent(all_games, username, n=20, depth=10, progress=progress))
+    st.session_state["coach_job"] = {"key": key}
+
+
 def _dashboard() -> None:
     all_games = st.session_state["games_df"]
     username = st.session_state["username"]
@@ -192,6 +265,8 @@ def _dashboard() -> None:
         flush_ga_events()
         return
     _export_button(enriched_f, username)
+    _start_coach_job(all_games, username)
+    _background_status(username)
 
     if st.session_state.get("_last_page") != page:  # once per change, not on every rerun
         st.session_state["_last_page"] = page
@@ -208,6 +283,7 @@ def _dashboard() -> None:
     )
 
     if page == "overview":
+        views_features.render_home_hero(st.session_state["enriched"], username, _tz())
         views_features.render_action_center(enriched_f, st.session_state["enriched"], username, _tz())
         render_overview_page(enriched_f, username)
         views_insights.render_insights_panel(enriched_f)

@@ -1,4 +1,4 @@
-﻿"""Move-quality analysis from engine evaluations (Lichess-style win-probability model).
+"""Move-quality analysis from engine evaluations (Lichess-style win-probability model).
 
 Pure functions on top of the evaluation frame produced by ``analytics.analyze_game``
 (columns ``ply, move_san, evaluation, best_move``; evaluation = pawns, white's view,

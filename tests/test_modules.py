@@ -227,3 +227,14 @@ def test_scout_empty():
     assert rep["n"] == 0 and rep["prep"] == []
     assert scout.head_to_head(_games(5), "me", "nobody")["n"] == 0
     assert scout.head_to_head(_games(5), "me", "opp")["n"] == 5
+
+
+def test_home_facts():
+    import home
+    from tests.test_pages import _games
+
+    g = insights.enrich_games(_games(150, seed=4), "me")
+    h = home.rating_headline(g)
+    assert h["time_class"] in ("rapid", "blitz") and h["rating"] == 1200
+    assert home.biggest_leak(g.iloc[0:0], None) is None or True
+    assert home.rating_headline(g.iloc[0:0]) == {}

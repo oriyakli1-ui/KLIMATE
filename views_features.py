@@ -6,12 +6,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import actions
+from ga import queue_event
 import analytics
 import html
 import insights
 import ledger
 import opening_eval
 import readiness
+import home
 import scout
 import share_card
 import weekly
@@ -314,6 +316,7 @@ def render_scout(mine: pd.DataFrame, raw_games: pd.DataFrame, username: str, tim
     opp_name = c[0].text_input("Opponent's Chess.com username", key="scout_user", placeholder="e.g. their username")
     months = c[1].selectbox("History", [1, 3, 6], index=1, format_func=lambda m: f"{m} month{'s' if m > 1 else ''}", key="scout_months")
     if st.button("Scout this player", key="scout_btn") and opp_name.strip():
+        queue_event("scout_run")
         bar = st.progress(0.0, text="Reading their games...")
         try:
             raw = fetch_games(opp_name.strip(), max_games=400, months=months, progress=lambda d, n: bar.progress(d / n, text="Reading their games..."))
@@ -371,3 +374,37 @@ def render_scout(mine: pd.DataFrame, raw_games: pd.DataFrame, username: str, tim
     hours = scout.peak_hours(insights.hourly_profile(opp, timezone))
     if hours:
         st.caption("They start most games around " + ", ".join(f"{h:02d}:00" for h in hours) + f" ({timezone}).")
+
+
+# ---------------------------------------------------------------------- Home hero
+def render_home_hero(g: pd.DataFrame, username: str, timezone: str) -> None:
+    """First thing a player sees: where they stand, their biggest leak and strength, in a few seconds."""
+    head = home.rating_headline(g)
+    summ = insights.overall_summary(g)
+    ledger_table = ledger.ledger(g, timezone)["table"] if len(g) >= 60 else None
+    leak = home.biggest_leak(g, ledger_table) if len(g) >= 30 else None
+    strength = home.biggest_strength(g, timezone) if len(g) >= 30 else None
+
+    st.markdown(
+        f"<div class='klimate-hero'><div class='hero-kicker'>YOUR CHESS IN 30 SECONDS</div>"
+        f"<div class='hero-title'>Hi {html.escape(username)}, here is what your {summ.get('n', 0)} games say.</div></div>",
+        unsafe_allow_html=True)
+    cols = st.columns(3)
+    if head:
+        change = f"{head['change_30d']:+.0f} in 30 days" if head["change_30d"] == head["change_30d"] else "no 30-day history yet"
+        sub_txt = f"{head['time_class']} · peak {head['peak']:.0f} · {change}"
+        cols[0].markdown(f"<div class='hero-card'><div class='hc-label'>WHERE YOU STAND</div><div class='hc-value'>{head['rating']:.0f}</div>"
+                         f"<div class='hc-sub'>{html.escape(sub_txt)}</div></div>", unsafe_allow_html=True)
+    else:
+        cols[0].markdown("<div class='hero-card'><div class='hc-label'>WHERE YOU STAND</div><div class='hc-value'>-</div>"
+                         "<div class='hc-sub'>no rated games loaded</div></div>", unsafe_allow_html=True)
+    for col, label, item, tone, empty in (
+            (cols[1], "YOUR BIGGEST LEAK", leak, "leak", "No habit stands out as costly yet. That is good news, or a sign more games are needed."),
+            (cols[2], "YOUR BIGGEST STRENGTH", strength, "strength", "No reliable strength yet. It needs more games to rule out luck.")):
+        if item:
+            col.markdown(f"<div class='hero-card {tone}'><div class='hc-label'>{label}</div><div class='hc-title'>{html.escape(item['title'])}</div>"
+                         f"<div class='hc-sub'>{html.escape(item['detail'])}</div>"
+                         f"<div class='hc-link'>Details: {html.escape(item['where'])}</div></div>", unsafe_allow_html=True)
+        else:
+            col.markdown(f"<div class='hero-card {tone}'><div class='hc-label'>{label}</div><div class='hc-sub'>{empty}</div></div>",
+                         unsafe_allow_html=True)
