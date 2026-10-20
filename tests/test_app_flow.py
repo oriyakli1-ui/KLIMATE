@@ -31,6 +31,6 @@ def _coach_page():
 def test_coach_summary_button_does_not_clash_with_session_state():
     at = AppTest.from_function(_coach_page, default_timeout=30).run()
     assert not at.exception, at.exception
-    next(b for b in at.button if b.label == "Write my coaching summary").click().run()
+    next(b for b in at.button if b.label == "Rewrite in coach voice with AI (optional)").click().run()
     assert not at.exception, at.exception  # regression: widget key == session_state key raised on the live site
     assert any("SUMMARY OK" in i.value for i in at.info)

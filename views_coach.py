@@ -9,6 +9,7 @@ import streamlit as st
 import analysis
 import analytics
 import coach
+import explain
 import insights
 import ledger
 import llm
@@ -99,7 +100,11 @@ def render_coach_report(games_df: pd.DataFrame, username: str) -> None:
 
     _render_conversion(moves, games)
 
-    if st.button("Write my coaching summary", key="coach_summary_btn"):
+    free_summary = explain.coach_summary(moves, games)
+    if free_summary:
+        st.markdown("#### Your coaching summary")
+        st.info(free_summary)
+    if st.button("Rewrite in coach voice with AI (optional)", key="coach_summary_btn"):
         with st.spinner("Writing…"):
             st.session_state["coach_summary"] = llm.pattern_summary(coach.stats_text(moves, games))
     if st.session_state.get("coach_summary"):

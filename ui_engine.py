@@ -4,6 +4,7 @@ from __future__ import annotations
 import chess
 import chess.pgn
 import chess.svg
+import explain
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -119,6 +120,11 @@ def render_engine_deep_dive(games_df, username: str) -> None:
         best = m["best_san"] or "n/a"
         st.markdown(f"**You played {m['san']}** and gave away about **{m['win_loss']:.0f}%** of your winning chances. "
                     f"The engine preferred **{best}**.")
-        with st.spinner("🤖 AI Coach is analyzing the position..."):
-            explanation = analytics.get_gemini_coach_explanation(m["fen"], m["san"], best, m["win_loss"])
-        st.info(f"**🤖 Your AI Coach:**\n\n{explanation}")
+        st.info(f"**Why it went wrong:** {explain.move_explanation(m)}")
+        ai_key = f"ai_ex_{m['fen']}_{m['san']}"
+        if st.button("Ask the AI Coach for a second opinion", key=f"btn_{ai_key}"):
+            st.session_state[ai_key] = True
+        if st.session_state.get(ai_key):
+            with st.spinner("AI Coach is looking at the position..."):
+                explanation = analytics.get_gemini_coach_explanation(m["fen"], m["san"], best, m["win_loss"])
+            st.info(f"**AI Coach:**\n\n{explanation}")

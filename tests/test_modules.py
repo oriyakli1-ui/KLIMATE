@@ -319,3 +319,36 @@ def test_missing_month_archive_is_skipped(monkeypatch):
 
     monkeypatch.setattr(data_engine, "_safe_get", fake_get)
     assert data_engine.fetch_games("bob", 10, 1).empty
+
+
+def test_free_explanations_are_specific():
+    import explain
+
+    m = {"san": "Qh5", "best_san": "Nf3", "win_loss": 42.0, "error_type": "hung_piece", "move_number": 14}
+    text = explain.move_explanation(m)
+    assert "Qh5" in text and "Nf3" in text and "42%" in text and "undefended" in text and "middlegame" in text
+    assert "opening" in explain.move_explanation({**m, "move_number": 6})
+    assert explain.coach_summary(pd.DataFrame(), pd.DataFrame()) == ""
+
+
+def test_ai_budget_is_enforced(monkeypatch):
+    import llm
+
+    monkeypatch.setattr(llm, "DAILY_LIMIT", 2)
+    llm._SPENT.update(day="", n=0)
+    llm._spend()
+    llm._spend()
+    try:
+        llm._spend()
+    except llm.LLMUnavailable:
+        pass
+    else:
+        raise AssertionError("daily budget was not enforced")
+    llm._SPENT.update(day="", n=0)
+
+
+def test_free_explanation_recognizes_a_missed_mate():
+    import explain
+
+    text = explain.move_explanation({"san": "Rc4", "best_san": "Qh4#", "win_loss": 48.0, "error_type": "positional", "move_number": 47})
+    assert "checkmate" in text and "positional" not in text.lower()
