@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://klimate.streamlit.app/sitemap.xml

@@ -18,6 +18,7 @@ import views_info
 import views_insights
 from data_engine import ChessComAPIError, fetch_games
 from ga import flush_ga_events, inject_ga, queue_event
+from seo import inject_seo
 from strings import t
 from ui_blindspots import render_strategic_blindspots
 from ui_engine import render_engine_deep_dive
@@ -346,6 +347,7 @@ def main() -> None:
                                    "About": "Klimate measures what your chess habits cost you in rating points, from your public Chess.com games. Free and private."},
                        page_title="Klimate", page_icon="♟️", layout="wide")
     inject_ga()
+    inject_seo()
     flush_ga_events()  # events queued by a run that ended in st.rerun()
     inject_global_styles()
 
