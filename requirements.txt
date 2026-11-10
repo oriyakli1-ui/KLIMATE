@@ -15,3 +15,4 @@ pillow
 # restart marker 5
 # restart marker 6
 # restart marker 7
+# restart marker 8 (enableStaticServing)
