@@ -33,6 +33,11 @@ COLOUR_OPTIONS = ["All", "White", "Black"]
 DEMO_PLAYERS = ["hikaru", "magnuscarlsen"]
 PLATFORMS = {"Chess.com": "chesscom", "Lichess": "lichess"}
 MAX_AUTO_COACH_JOBS = 2      # engine analyses started automatically at the same time (free hosting has little CPU)
+HOW_IT_WORKS = [
+    ("1", "Enter your username", "Chess.com or Lichess — whichever you play on."),
+    ("2", "We read your public games", "A few seconds to a minute for history. Nothing is stored or shared."),
+    ("3", "See what's costing you points", "Tilt, time trouble, and openings, measured — not guessed."),
+]
 VALUE_CARDS = [
     ("📏", "Measured, not guessed", "Every number is checked against the raw Chess.com data and shown with its uncertainty."),
     ("🪙", "Your habits in rating points", "See what tilt, late nights and time scrambles actually cost you."),
@@ -60,9 +65,9 @@ def _landing() -> None:
     with logo_col:
         st.image("logo.png", width="stretch")
     st.markdown(
-        "<p style='text-align: center; color: #D1D5DB; font-size: 1.2rem; "
+        "<h1 style='text-align: center; color: #D1D5DB; font-size: 1.2rem; "
         "font-weight: 300; margin-top: -15px; margin-bottom: 28px; letter-spacing: 1px;'>"
-        f"{t('tagline')}</p>",
+        f"{t('tagline')}</h1>",
         unsafe_allow_html=True,
     )
     _, col_center, _ = st.columns([1, 2, 1])
@@ -88,6 +93,17 @@ def _landing() -> None:
         col.markdown(
             f"<div class='klimate-value-card'><div class='vc-icon'>{icon}</div><div class='vc-title'>{title}</div>"
             f"<div class='vc-text'>{text}</div></div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height: 30px'></div>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align:center; color:#F8FAFC; font-size:1.05rem; letter-spacing:0.08em; "
+                "text-transform:uppercase; margin-bottom:16px;'>How it works</h2>", unsafe_allow_html=True)
+    how_cols = st.columns(3)
+    for col, (n, title, text) in zip(how_cols, HOW_IT_WORKS):
+        col.markdown(
+            f"<div class='klimate-value-card' style='text-align:center;'>"
+            f"<div style='color:#06B6D4; font-weight:800; font-size:1.3rem;'>{n}</div>"
+            f"<div class='vc-title'>{title}</div><div class='vc-text'>{text}</div></div>",
+            unsafe_allow_html=True)
 
     if analyze_clicked:
         queue_event("analyze_clicked", has_username=bool(username_input.strip()))
